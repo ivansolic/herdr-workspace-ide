@@ -1,11 +1,11 @@
-# Herdr Workbench
+# Herdr Workspace IDE
 
 A [Herdr](https://herdr.dev) app layout with an editor workbench next to the sidebar, in the style of
 VS Code (not affiliated with Microsoft or Visual Studio Code). **macOS and Linux only.**
 Needs Herdr 0.1.14 or newer (the first PDF opened builds its viewer, which can take longer than
 older versions let a program run).
 
-![Herdr Workbench: Explorer, a terminal and an editor tab side by side](preview.png)
+![Herdr Workspace IDE: Explorer, a terminal and an editor tab side by side](preview.png)
 
 Built so far:
 
@@ -92,7 +92,7 @@ Built so far:
   Only the layout is compared: a change in one of Herdr's own mods, such as a renamed setting this
   layout passes but `main` does not, is not noticed.
   Missed the notice? Run `herdr-app do vsc.comparemain` while this layout is shown. After taking changes
-  over into `layouts/workbench.json`, copy `layouts/main.json` to `mods/vsc/main-base.json`, so the
+  over into `layouts/workspace-ide.json`, copy `layouts/main.json` to `mods/vsc/main-base.json`, so the
   difference is not told again.
 
 
@@ -190,17 +190,17 @@ Herdr asks every shared mod to say this before it is installed.
 Copy the layout and the mod into Herdr's home, check the mod, then switch to the layout:
 
 ```sh
-git clone https://github.com/ivansolic/herdr-workbench
-cd herdr-workbench
-cp layouts/workbench.json ~/.config/herdr-app/layouts/
+git clone https://github.com/ivansolic/herdr-workspace-ide
+cd herdr-workspace-ide
+cp layouts/workspace-ide.json ~/.config/herdr-app/layouts/
 cp -R mods/vsc ~/.config/herdr-app/mods/
 herdr-app check ~/.config/herdr-app/mods/vsc
-herdr-app do layout.switch '{"name":"workbench"}'
+herdr-app do layout.switch '{"name":"workspace-ide"}'
 ```
 
 Merge `keys.json` into `~/.config/herdr-app/keys.json` for the keys below (add its two sections; keep
 your own keys where they differ). `ctrl-shift-l` switches back to your previous layout; deleting
-`layouts/workbench.json` and `mods/vsc` removes it. Requires git 2.31 or newer for Source Control.
+`layouts/workspace-ide.json` and `mods/vsc` removes it. Requires git 2.31 or newer for Source Control.
 
 ## Keys
 
@@ -215,7 +215,7 @@ In an editor tab, `cmd-s` saves.
 ./scripts/dev-link.sh                     # copy mods/ and layouts/ into ~/.config/herdr-app
 herdr-app check mods/vsc                  # check the mod after each change
 npm test                                  # tests for the pure helpers (Node 20+)
-herdr-app do layout.switch '{"name":"workbench"}'
+herdr-app do layout.switch '{"name":"workspace-ide"}'
 ```
 
 ## License

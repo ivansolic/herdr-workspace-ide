@@ -1,10 +1,10 @@
-# Herdr Workbench
+# Herdr Workspace IDE
 
 An editor workbench beside Herdr's sidebar, in the style of VS Code: an activity rail with Explorer, Source
 Control, Search and Problems, files, diffs, PDFs, documents and diagrams opening in Herdr's own tabs next to
 your terminals and agents, and terminal tabs named after the agent or folder in them.
 
-![Herdr Workbench](preview.png)
+![Herdr Workspace IDE](preview.png)
 
 ## What you see
 
@@ -58,7 +58,7 @@ Preview | Edit segments, Save) above the content.
 
 ## Built from
 
-- `layouts/workbench.json`: root row → `sidebar` column (`brand` block `workspace-chrome`, `sidebar-lists`
+- `layouts/workspace-ide.json`: root row → `sidebar` column (`brand` block `workspace-chrome`, `sidebar-lists`
   column with `spaces` and `agents` blocks, `sidebar-footer` block `workspace-chrome` with
   `{"footer": true}`), `vsc-activity` block (`vsc`, `{"view": "activity"}`), `vsc-views` stack (`vsc` blocks
   `{"view": "explorer" | "scm" | "search" | "problems"}` and Herdr's `changes` block), `work` column (`tabs` block
@@ -77,7 +77,7 @@ Preview | Edit segments, Save) above the content.
 - Vendored libraries in `mods/vsc/vendor/` (Mermaid, draw.io viewer, Excalidraw utils), unchanged except
   Excalidraw's Liberation Sans font (taken out by `scripts/vendor-excalidraw.mjs`); own icon set in
   `mods/vsc/icons/`.
-- `keys.json`: `layout:workbench` (`cmd-shift-e` Explorer, `ctrl-shift-g` Source Control, `cmd-shift-f`
+- `keys.json`: `layout:workspace-ide` (`cmd-shift-e` Explorer, `ctrl-shift-g` Source Control, `cmd-shift-f`
   Search, `cmd-shift-m` Problems, `cmd-p` Quick Open) and `mod:vsc` (`cmd-s` save).
 
 ## Watch out
@@ -96,7 +96,7 @@ Preview | Edit segments, Save) above the content.
 ## Done when
 
 - `herdr-app check ~/.config/herdr-app/mods/vsc` passes and `npm test` passes.
-- Switching to `workbench` shows sidebar, rail, panel, tabs and status bar as above; the rail folds and
+- Switching to `workspace-ide` shows sidebar, rail, panel, tabs and status bar as above; the rail folds and
   restores the panel; Herdr's Files/Changes buttons come back after switching away.
 - Explorer lists the focused terminal's folder; a file opens in its own tab, edits save with `cmd-s`.
 - A PDF shows pages, a `.mmd` file draws, an `.excalidraw` file draws with its fonts and pictures.

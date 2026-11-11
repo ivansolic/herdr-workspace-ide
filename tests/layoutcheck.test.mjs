@@ -1,4 +1,4 @@
-// Herdr's main layout against the copy the workbench layout follows: when to say it changed.
+// Herdr's main layout against the copy the workspace-ide layout follows: when to say it changed.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

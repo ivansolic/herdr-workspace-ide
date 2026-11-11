@@ -77,7 +77,7 @@ function nameTabs(agentKeys) {
   for (const { id, name } of renames) run("tab.rename", { id, name });
 }
 
-// The workbench layout is built from parts of Herdr's main layout, which Herdr replaces on updates: a changed
+// The workspace-ide layout is built from parts of Herdr's main layout, which Herdr replaces on updates: a changed
 // main is said once per version (its fingerprint remembered), and the notice opens both side by side.
 const MAIN_SEEN = "vsc.main-seen";
 const mainBase = () => `${appHome()}/mods/${MOD}/main-base.json`, mainNow = () => `${appHome()}/layouts/main.json`;
@@ -93,7 +93,7 @@ async function checkMainLayout() {
   if (!notice) return;
   // Remembered before it shows, so another window's check does not show it again.
   setShared(MAIN_SEEN, fingerprint);
-  notify({ title: "Herdr's main layout changed", body: "It differs from the one the workbench layout was made from. Click to compare them.",
+  notify({ title: "Herdr's main layout changed", body: "It differs from the one the workspace-ide layout was made from. Click to compare them.",
     level: "info", action: { name: `${MOD}.comparemain` } });
 }
 

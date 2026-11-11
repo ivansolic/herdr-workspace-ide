@@ -1,5 +1,5 @@
 {
-  "name": "herdr-workbench",
+  "name": "herdr-workspace-ide",
   "private": true,
   "type": "module",
   "scripts": {

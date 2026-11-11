@@ -1,5 +1,5 @@
-// Herdr's shipped main layout against the copy the workbench layout follows (main-base.json): Herdr replaces
-// main on updates, and the workbench layout, built from parts of it, would miss what changed. Pure: no herdr
+// Herdr's shipped main layout against the copy the workspace-ide layout follows (main-base.json): Herdr replaces
+// main on updates, and the workspace-ide layout, built from parts of it, would miss what changed. Pure: no herdr
 // imports, so it runs under node --test.
 
 // The layout as JSON with keys in order, so the same layout written another way compares equal; null

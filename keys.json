@@ -1,5 +1,5 @@
 {
-  "layout:workbench": {
+  "layout:workspace-ide": {
     "cmd-shift-e": "vsc.explorer",
     "ctrl-shift-g": "vsc.scm",
     "cmd-shift-f": "vsc.search",
