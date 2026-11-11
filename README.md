@@ -5,6 +5,8 @@ VS Code (not affiliated with Microsoft or Visual Studio Code). **macOS and Linux
 Needs Herdr 0.1.14 or newer (the first PDF opened builds its viewer, which can take longer than
 older versions let a program run).
 
+![Herdr Workbench: Explorer, a terminal and an editor tab side by side](preview.png)
+
 Built so far:
 
 - An activity rail with Explorer, Changes (Herdr's own Changes panel), Source Control, Search and Problems. The panel resizes, and folds to
