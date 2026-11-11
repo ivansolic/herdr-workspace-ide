@@ -1,0 +1,13 @@
+{
+  "layout:workbench": {
+    "cmd-shift-e": "vsc.explorer",
+    "ctrl-shift-g": "vsc.scm",
+    "cmd-shift-f": "vsc.search",
+    "cmd-shift-m": "vsc.problems",
+    "cmd-p": "vsc.quickopen"
+  },
+  "mod:vsc": {
+    "cmd-s": "vsc.save",
+    "ctrl-s": "vsc.save"
+  }
+}
