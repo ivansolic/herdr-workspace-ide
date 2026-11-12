@@ -143,6 +143,13 @@
               "view": "problems"
             }
           }
+        },
+        {
+          "id": "vsc-usage",
+          "type": "block",
+          "content": {
+            "mod": "ai-usage"
+          }
         }
       ]
     },

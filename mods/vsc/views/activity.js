@@ -17,6 +17,8 @@ const ITEMS = [
   { id: "vsc-scm", label: "Source Control", icon: "git-branch", command: "scm" },
   { id: "vsc-search", label: "Search", icon: "search", command: "search" },
   { id: "vsc-problems", label: "Problems", icon: "triangle-alert", command: "problems" },
+  // AI usage (the `ai-usage` mod): every agent's subscriptions, limits, cost and models.
+  { id: "vsc-usage", label: "AI usage", icon: "gauge", command: "usage" },
 ];
 
 function find(node, id) {
