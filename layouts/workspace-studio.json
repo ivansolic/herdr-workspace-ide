@@ -180,10 +180,10 @@
                 "pane": {
                   "header": {
                     "content": {
-                      "mod": "pane"
+                      "mod": "ai-usage"
                     },
                     "reveal": "always",
-                    "height": 30,
+                    "height": 64,
                     "position": "top"
                   },
                   "background": "background",

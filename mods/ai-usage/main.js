@@ -4,14 +4,15 @@
 // recent sessions with their subagents folded in.
 // scan.mjs reads the agents' own logs (Claude Code, Gemini CLI, Codex) under Node; Claude's live limits
 // and subagent details come from the snapshots Claude Code's `progress-tracker` mod writes.
-import { View, div, svg } from "gpui-kit";
+import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
-import { agents, panes, exec, home, appHome, readTextFile, writeTextFile, watchFolder, theme, run, shared, setShared, notify } from "herdr";
+import { agents, panes, exec, hc, home, appHome, readTextFile, writeTextFile, watchFolder, theme, run, shared, setShared, notify, props, openOverlay, closeOverlay } from "herdr";
 import * as fs from "fs/promises";
 import {
   ranges, totals, projectMonth, modelName, priceOf, providerOf, sumTokens, costOf, mergeDays, sessionDays, dailyCost, cacheSavings, dayOf,
   subtractDays, firstDayOf, weekly, toCsv, budgetWarning, featureSummary, USD, euros, parseEcbRate,
 } from "./lib/usage.js";
+import { AgentHeader } from "./header.js";
 
 const MOD = "ai-usage";
 const VIEWS_ID = "vsc-views";
@@ -22,6 +23,8 @@ const LINKS_KEY = "ai-usage.links";
 // Subscription cards folded to one line.
 const FOLDED_KEY = "ai-usage.folded";
 const OTHER_WORK = "Other work";
+// Plans and limits the pane header found (see header.js).
+const DETECTED_KEY = "ai-usage.detected";
 // Monthly budgets per project ({ project: usd }) and the warnings already shown.
 const BUDGETS_KEY = "ai-usage.budgets";
 const WARNED_KEY = "ai-usage.budget-warned";
@@ -121,6 +124,11 @@ export default class AiUsage extends View {
   }
 
   init(_props, cx) {
+    // The same mod draws each pane's header (props.pane) and an agent's detail window (props.view).
+    if (props()?.pane || props()?.view === "agent") {
+      this.agentView = new AgentHeader(cx, { PROVIDERS, PLAN_CHOICES, DEFAULT_PLANS, PLANS_KEY, claudePlan, money, kTokens, resetText, duration, tint, MOD });
+      return;
+    }
     this.trackerDir = `${home()}/.claude/progress-tracker`;
     this.snapshots = [];
     this.scan = null;
@@ -247,6 +255,13 @@ export default class AiUsage extends View {
       const usd = snap?.planUsd ?? detected?.usd ?? null;
       return detected ? { ...detected, usd, source: snap?.planUsd != null ? "set by you" : "detected", extraUsage: Boolean(this.scan?.claudePlan?.extraUsage) } : null;
     }
+    // A plan the pane header found (Codex's login, Gemini's /stats) wins over the one picked here.
+    const found = this.sh(DETECTED_KEY)?.[provider]?.plan;
+    if (found) {
+      const usd = provider === "google" ? (/ultra/i.test(found) ? null : /pro/i.test(found) ? 19.99 : /free|standard/i.test(found) ? 0 : null)
+        : /pro/i.test(found) ? 200 : /plus/i.test(found) ? 20 : null;
+      return { id: "detected", name: found, usd, source: "detected" };
+    }
     const choices = PLAN_CHOICES[provider] ?? [];
     const plan = choices.find((c) => c.id === this.plans()[provider]) ?? choices[0];
     return plan ? { ...plan, source: "chosen" } : null;
@@ -343,6 +358,7 @@ export default class AiUsage extends View {
   // ----- layout -----
 
   render() {
+    if (this.agentView) return this.agentView.render();
     const t = theme(), now = Date.now();
     FX = this.currency();
     const wantsEuro = this.sh(CURRENCY_KEY) === "EUR";
@@ -475,8 +491,10 @@ export default class AiUsage extends View {
       const reset = (w) => (w?.resets_at ? w.resets_at * 1000 : w?.resets_in_seconds ? at + w.resets_in_seconds * 1000 : null);
       return [l.primary, l.secondary].filter(Boolean).map((w) => this.meter(name(w), w.used_percent ?? 0, resetText(reset(w), now), t));
     }
-    // Gemini: what /stats shows per model, from its chats; its quota is not saved locally.
+    // Gemini: what /stats shows per model, from its chats; its daily limit as /stats last showed it.
     const range = ranges(now)[this.range];
+    const g = this.sh(DETECTED_KEY)?.google, seen = g?.at ?? 0;
+    const dailyLimit = g?.limit && now - seen < 24 * 3600e3 ? g.limit : null;
     const { byModel } = totals(this.days(this.sessions().filter((s) => s.provider === "google")), range);
     const rows = Object.entries(byModel).sort((a, b) => b[1].tokens.requests - a[1].tokens.requests);
     const most = Math.max(1, ...rows.map(([, v]) => v.tokens.requests));
@@ -491,7 +509,10 @@ export default class AiUsage extends View {
             `${kTokens(sumTokens(v.tokens))} tokens · ${input ? Math.round((v.tokens.cacheRead / input) * 100) : 0}% from cache`));
       }),
       ...(rows.length ? [] : [div().pt(4).text_size(11).text_color(t.muted).child(`No Gemini replies ${RANGE_WORDS[this.range]}.`)]),
-      this.info("Gemini keeps its quota only while it runs, not on disk; /stats in Gemini shows what is left.", t),
+      ...(dailyLimit ? [this.meter("Daily limit", dailyLimit.percent,
+        `${dailyLimit.resetsIn ? `resets in ${dailyLimit.resetsIn} · ` : ""}as /stats showed it ${duration(now - seen)} ago`, t)] : []),
+      this.info(dailyLimit ? "Gemini keeps its quota only while it runs; this is what /stats last showed in a Gemini pane."
+        : "Gemini keeps its quota only while it runs. Run /stats in Gemini inside Herdr and the plan and daily limit show here.", t),
     ];
   }
 
@@ -517,7 +538,7 @@ export default class AiUsage extends View {
       const plan = this.planFor(provider);
       const days = sessionDays((this.scan.sessions ?? []).filter((s) => s.provider === provider));
       const projected = projectMonth(totals(days, month).usd, now);
-      const chosen = provider !== "anthropic";
+      const chosen = provider !== "anthropic" && plan?.source === "chosen";
       const verdict = !plan || plan.usd === null ? null
         : projected === 0 ? { text: `No ${PROVIDERS[provider].agent} use this month yet`, color: t.dim }
           : projected > plan.usd ? { text: `Subscription saves ~${money(projected - plan.usd)} this month`, color: t.accent }

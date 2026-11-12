@@ -6,6 +6,7 @@ import { readFile, writeFile, mkdir, readdir, stat } from "node:fs/promises";
 import { join, basename } from "node:path";
 import { homedir } from "node:os";
 import { parseClaude, parseGemini, parseCodex, mergeDays, projectOf } from "./lib/usage.js";
+import { liveClaude, liveCodex, liveGemini } from "./lib/live.js";
 
 const HOME = homedir();
 // Claude Code deletes its transcripts after 30 days by default. What a deleted file added up to stays in
@@ -50,6 +51,25 @@ async function claudePlan() {
     return { organizationType: a.organizationType ?? null, seatTier: a.seatTier ?? null,
       rateLimitTier: a.userRateLimitTier ?? a.organizationRateLimitTier ?? null, extraUsage: a.hasExtraUsageEnabled === true };
   } catch { return null; }
+}
+
+// The plan a Codex login holds, from its id token's payload: only the plan field is read and returned;
+// the tokens themselves are never kept, printed or sent anywhere.
+export function codexPlan(authJson) {
+  try {
+    const token = JSON.parse(authJson)?.tokens?.id_token;
+    if (!token) return null;
+    const payload = JSON.parse(Buffer.from(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"));
+    const plan = payload?.["https://api.openai.com/auth"]?.chatgpt_plan_type ?? null;
+    return plan ? String(plan) : null;
+  } catch {
+    return null;
+  }
+}
+
+
+async function codexLoginPlan() {
+  try { return codexPlan(await readFile(join(HOME, ".codex/auth.json"), "utf8")); } catch { return null; }
 }
 
 const installed = async (path) => Boolean(await stat(path).catch(() => null));
@@ -157,6 +177,7 @@ async function main() {
       openai: await installed(join(HOME, ".codex")),
     },
     claudePlan: await claudePlan(),
+    codexPlan: await codexLoginPlan(),
     limits,
     keepDays: KEEP_DAYS,
     sessions: [...sessions.values()].sort((a, b) => String(b.last).localeCompare(String(a.last))),
@@ -164,4 +185,64 @@ async function main() {
   process.stdout.write(JSON.stringify(out));
 }
 
-main().catch((e) => { process.stderr.write(String(e?.stack ?? e)); process.exit(1); });
+// --live <agent> <folder>: what the agent running in a pane in that folder is doing now, from its newest
+// session file there. For the pane header; reads one file, so it can run every few seconds.
+const newest = async (files) => {
+  const stats = await Promise.all(files.map(async (f) => [f, (await stat(f).catch(() => null))?.mtimeMs ?? 0]));
+  return stats.sort((a, b) => b[1] - a[1])[0] ?? null;
+};
+const parents = (dir) => { const out = []; for (let d = dir; d && d !== "/"; d = join(d, "..")) out.push(d); return out; };
+
+async function live(agent, cwd) {
+  if (agent === "claude") {
+    for (const dir of parents(cwd)) {
+      const folder = join(HOME, ".claude/projects", dir.replace(/[/.]/g, "-"));
+      const files = (await readdir(folder).catch(() => [])).filter((n) => n.endsWith(".jsonl")).map((n) => join(folder, n));
+      const top = await newest(files);
+      if (!top) continue;
+      const out = { ...liveClaude(await readFile(top[0], "utf8")), session: basename(top[0], ".jsonl"), updatedAt: top[1], project: projectOf(dir) };
+      // The progress tracker's snapshot, when it runs in that session, knows the plan's limits and subagent steps.
+      try {
+        const snap = JSON.parse(await readFile(join(HOME, ".claude/progress-tracker/sessions", `${out.session}.json`), "utf8"));
+        if (Date.now() - snap.updatedAt < 15 * 60 * 1000) out.snapshot = snap;
+      } catch { /* the tracker plugin is not installed or not running there */ }
+      out.planFields = await claudePlan();
+      return out;
+    }
+    return null;
+  }
+  if (agent === "codex") {
+    const files = (await walk(join(HOME, ".codex/sessions"), (p) => /rollout-[^/]+\.jsonl$/.test(p), []))
+      .filter((f) => Date.now() - f.mtimeMs < 3 * 86400e3).sort((a, b) => b.mtimeMs - a.mtimeMs);
+    for (const f of files.slice(0, 40)) {
+      const text = await readFile(f.path, "utf8");
+      const result = liveCodex(text);
+      if (result.cwd && (result.cwd === cwd || cwd.startsWith(result.cwd + "/") || result.cwd.startsWith(cwd + "/"))) {
+        return { ...result, updatedAt: f.mtimeMs, project: projectOf(result.cwd), plan: await codexLoginPlan() };
+      }
+    }
+    return { agent: "codex", plan: await codexLoginPlan(), tasks: { items: [], done: 0, total: 0, active: null }, subagents: [] };
+  }
+  if (agent === "gemini") {
+    let map = {};
+    try { map = JSON.parse(await readFile(join(HOME, ".gemini/projects.json"), "utf8")).projects ?? {}; } catch { /* none yet */ }
+    for (const dir of parents(cwd)) {
+      const name = map[dir];
+      if (!name) continue;
+      const folder = join(HOME, ".gemini/tmp", name, "chats");
+      const files = (await readdir(folder).catch(() => [])).filter((n) => /\.jsonl?$/.test(n)).map((n) => join(folder, n));
+      const top = await newest(files);
+      if (top) return { ...liveGemini(await readFile(top[0], "utf8")), updatedAt: top[1], project: projectOf(dir) };
+    }
+    return null;
+  }
+  return null;
+}
+
+if (process.argv[2] === "--live") {
+  live(process.argv[3], process.argv[4] ?? HOME)
+    .then((r) => process.stdout.write(JSON.stringify(r)))
+    .catch((e) => { process.stderr.write(String(e?.stack ?? e)); process.exit(1); });
+} else {
+  main().catch((e) => { process.stderr.write(String(e?.stack ?? e)); process.exit(1); });
+}
