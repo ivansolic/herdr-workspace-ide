@@ -18,8 +18,10 @@ const stop = (_e, cx) => cx.stop_propagation();
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 // The full name of a limit, as Claude Code's band says it.
 const LIMIT_NAMES = { "5h": "5-hour limit", Week: "Weekly limit", Day: "Daily limit" };
-// Below this width (px) the usage row uses short labels.
-const WIDE = 900;
+// The header's three forms: the usage row in full words on one row; in full words over two rows with the
+// tasks moved up beside the title; or in short labels over two rows, the tasks beside the title too. Which one fits is measured from the
+// row's text (about CHAR px a character at the header's size) and its bars, against the pane's width.
+const CHAR = 5.6, BAR = 60, PART = 16, PAD = 24;
 const hhmm = (d) => d.toTimeString().slice(0, 5);
 const kTok = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : `${Math.round(n / 1000)}k`);
 
@@ -146,17 +148,37 @@ export class AgentHeader {
   }
 
   // Row 0, like Herdr's own pane header: icon, name, where, status, and the buttons on hover.
-  titleRow(p, t, kind) {
+  // The header's form for this pane's width: "wide", "medium" or "narrow".
+  form(f) {
+    const w = this.width ?? 4000;
+    if (!f) return "wide";
+    const text = this.usageWords(f, true).join(" ");
+    const need = text.length * CHAR + (f.limits.length + 1) * BAR + (f.limits.length + 3) * PART + PAD;
+    // Over two rows the longest half must fit: a little more than half of the whole.
+    return w >= need ? "wide" : w >= need * 0.58 ? "medium" : "narrow";
+  }
+
+  // The usage row's words in full, for measuring.
+  usageWords(f) {
+    const words = [`Plan ${f.plan ?? "–"}`];
+    for (const l of f.limits) words.push(`${LIMIT_NAMES[l.label] ?? l.label} 100% · resets Tue 03:00`);
+    if (f.context) words.push("Memory 100% · 827k of 1.0M tokens");
+    words.push("Cost $000.00 at API price");
+    return words;
+  }
+
+  titleRow(p, t, kind, extra = null) {
     const prog = p.program;
     const pic = prog?.icon ? (prog.tint ? svg(prog.icon).size(14).flex_none().text_color(t.dim) : image(prog.icon).w(14).h(14).flex_none()) : null;
     const name = ((prog?.agent || prog?.shell) && prog.name) || p.title || prog?.name || "shell";
     const f = kind && kind !== "other" ? this.facts(kind) : null;
     const where = f?.project ? `${f.project}${f.branch || p.branch ? ` · ${f.branch ?? p.branch}` : ""}` : `${folder(p.cwd)}${p.branch ? ` · ${p.branch}` : ""}`;
     const pane = p.pane;
-    return h_flex().h(20).gap(8).items_center()
+    return h_flex().h(18).gap(8).items_center()
       .when(Boolean(pic), (el) => el.child(pic))
       .child(div().flex_none().truncate().max_w(220).font_semibold().text_color(t.foreground).child(name))
       .child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(where))
+      .when(Boolean(extra), (el) => el.child(extra))
       .when(p.status === "working", (el) => el.child(svg("mods/workspace-chrome/spinner.svg").size(12).flex_none().text_color(t.working).spin(900)))
       .when(p.status === "blocked", (el) => el.child(div().flex_none().px(6).h(18).flex().items_center().rounded(5).bg(this.h.tint(t.blocked, "26"))
         .text_size(10.5).font_semibold().text_color(t.blocked).child("Needs you")))
@@ -173,7 +195,7 @@ export class AgentHeader {
 
   // Row 1: plan, limits with their reset, memory and cost, the labels in the theme's brown (ansi3). In the
   // same words as Claude Code's band when the pane is wide enough, else short.
-  usageRow(f, t, wide = (this.width ?? 1200) >= WIDE) {
+  usageRow(f, t, wide = this.form(f) !== "narrow", wrap = this.form(f) !== "wide") {
     const label = (text) => div().flex_none().font_semibold().text_color(t.ansi3).child(text);
     const dim = (text) => div().flex_none().text_color(t.muted).child(text);
     const sep = () => div().flex_none().text_color(t.border).child("│");
@@ -196,9 +218,21 @@ export class AgentHeader {
     parts.push(h_flex().gap(4).items_center().child(label("Cost"))
       .child(div().flex_none().text_color(t.foreground).child(f.cost === null ? "–" : `${f.exact ? "" : "~"}${this.h.money(f.cost)}`))
       .when(wide && f.cost !== null, (el) => el.child(dim("at API price"))));
-    const row = h_flex().h(18).gap(8).items_center().overflow_hidden();
-    parts.forEach((part, i) => { if (i) row.child(sep()); row.child(part); });
+    // Two rows at most when wrapping; a separator never starts a row, so each part carries its own.
+    const row = wrap ? h_flex().flex_wrap().h(35).gap_x(8).gap_y(1).items_center().overflow_hidden()
+      : h_flex().h(17).gap(8).items_center().overflow_hidden();
+    parts.forEach((part, i) => row.child(i ? h_flex().gap(8).items_center().child(sep()).child(part) : part));
     return row;
+  }
+
+  // The task list's bar and count alone, for the title row when the usage row takes two.
+  tasksBadge(f, t) {
+    const tasks = f.tasks ?? { done: 0, total: 0 };
+    if (!tasks.total) return null;
+    return h_flex().flex_none().gap(4).items_center()
+      .child(div().font_semibold().text_color(t.ansi3).child("Tasks"))
+      .child(this.bar((tasks.done / tasks.total) * 100, t, 40, tasks.done === tasks.total ? t.done : t.accent))
+      .child(div().text_color(t.foreground).child(`${tasks.done}/${tasks.total}`));
   }
 
   // Row 2: the task list with its bar and what runs now, and the subagents.
@@ -206,7 +240,7 @@ export class AgentHeader {
     const tasks = f.tasks ?? { done: 0, total: 0 };
     const running = f.subagents.filter((a) => a.status === "running").length, done = f.subagents.length - running;
     const busy = p.status === "working";
-    const row = h_flex().h(18).gap(6).items_center().overflow_hidden()
+    const row = h_flex().h(17).gap(6).items_center().overflow_hidden()
       .child(div().w(12).flex_none().text_color(busy ? t.working : t.accent).when(busy, (el) => el.frames(SPINNER, 90)).child(busy ? SPINNER[0] : tasks.total && tasks.done === tasks.total ? "✓" : "·"));
     if (tasks.total) {
       row.child(div().flex_none().font_semibold().text_color(t.ansi3).child("Tasks"))
@@ -224,14 +258,16 @@ export class AgentHeader {
     const t = theme(), p = this.me();
     if (!p) return div();
     const kind = agentKind(p);
-    const root = v_flex().id(`agent-head-${p.pane}`).size_full().px(10).py(4).gap(2).justify_center().bg(t.background).border_b(1).border_color(t.border)
+    // 64 px in the layout: an 18 px title row and two 17 px rows, with 3 px around and 1 px between.
+    const root = v_flex().id(`agent-head-${p.pane}`).size_full().px(10).py(3).gap(1).justify_center().bg(t.background).border_b(1).border_color(t.border)
       .text_size(12).on_hover((hovered, cx) => { this.hovered = hovered; cx.notify(); })
       .on_size_change((size, cx) => { if (Math.abs((this.width ?? 0) - size.width) > 16) { this.width = size.width; cx.notify(); } })
-      .on_click(() => run("pane.focus", { pane: p.pane }))
-      .child(this.titleRow(p, t, kind));
+      .on_click(() => run("pane.focus", { pane: p.pane }));
+    const f = kind && kind !== "other" ? this.facts(kind) : null, form = this.form(f);
+    root.child(this.titleRow(p, t, kind, f && form !== "wide" ? this.tasksBadge(f, t) : null));
     if (!kind) return root.child(div().h(18).text_size(11).text_color(t.muted).truncate().child(p.cwd ? folder(p.cwd) : ""));
     if (kind === "other") return root.child(div().h(18).text_size(11).text_color(t.muted).child("Agent · its usage isn't read yet (Claude Code, Codex and Gemini CLI are)"));
-    const f = this.facts(kind);
+    if (form !== "wide") return root.child(this.usageRow(f, t));
     return root.child(this.usageRow(f, t)).child(this.tasksRow(f, p, t));
   }
 
