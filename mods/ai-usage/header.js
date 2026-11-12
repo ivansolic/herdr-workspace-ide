@@ -183,9 +183,6 @@ export class AgentHeader {
       .when(p.status === "blocked", (el) => el.child(div().flex_none().px(6).h(18).flex().items_center().rounded(5).bg(this.h.tint(t.blocked, "26"))
         .text_size(10.5).font_semibold().text_color(t.blocked).child("Needs you")))
       .when(p.status === "done", (el) => el.child(div().size(7).flex_none().rounded(4).bg(t.done)))
-      .when(Boolean(kind && kind !== "other"), (el) => el.child(this.button(t, `ah-open-${pane}`, div().text_size(12).child("⤢"),
-        () => openOverlay({ mod: this.h.MOD, kind: "window", key: `agent-${pane}`, width: 560, height: 520, props: { view: "agent", pane } }),
-        "Every task and subagent")))
       .when(this.hovered, (el) => el
         .child(this.button(t, `ah-r-${pane}`, svg("mods/pane/split-right.svg").size(14), () => run("pane.split", { direction: "right", pane }), "Split right"))
         .child(this.button(t, `ah-d-${pane}`, svg("mods/pane/split-down.svg").size(14), () => run("pane.split", { direction: "down", pane }), "Split down"))
@@ -225,14 +222,31 @@ export class AgentHeader {
     return row;
   }
 
-  // The task list's bar and count alone, for the title row when the usage row takes two.
+  // Opens the window with every task and subagent of this pane's agent.
+  openDetail() {
+    const pane = props()?.pane;
+    openOverlay({ mod: this.h.MOD, kind: "window", key: `agent-${pane}`, width: 560, height: 520, props: { view: "agent", pane } });
+  }
+
+  // A small button that says what it opens, so its purpose is plain: "All tasks ›" and the like.
+  pill(t, id, children, tooltip) {
+    return h_flex().id(id).flex_none().h(17).px(6).gap(4).items_center().rounded(5).cursor_pointer().bg(t.raised)
+      .hover((s) => s.bg(t.hover)).tooltip(tooltip)
+      .on_mouse_down("left", stop).on_click((_e, cx) => { cx.stop_propagation(); this.openDetail(); cx.notify(); })
+      .children(children);
+  }
+
+  // The task list's bar and count alone, for the title row when the usage row takes two: a button that
+  // opens every task and subagent.
   tasksBadge(f, t) {
     const tasks = f.tasks ?? { done: 0, total: 0 };
-    if (!tasks.total) return null;
-    return h_flex().flex_none().gap(4).items_center()
-      .child(div().font_semibold().text_color(t.ansi3).child("Tasks"))
-      .child(this.bar((tasks.done / tasks.total) * 100, t, 40, tasks.done === tasks.total ? t.done : t.accent))
-      .child(div().text_color(t.foreground).child(`${tasks.done}/${tasks.total}`));
+    const label = tasks.total ? [
+      div().font_semibold().text_color(t.ansi3).child("Tasks"),
+      this.bar((tasks.done / tasks.total) * 100, t, 40, tasks.done === tasks.total ? t.done : t.accent),
+      div().text_color(t.foreground).child(`${tasks.done}/${tasks.total}`),
+    ] : f.subagents.length ? [div().font_semibold().text_color(t.ansi3).child(`${f.subagents.length} subagents`)] : null;
+    if (!label) return null;
+    return this.pill(t, `ah-tasks-${props()?.pane}`, [...label, div().text_color(t.muted).child("›")], "Show every task and subagent");
   }
 
   // Row 2: the task list with its bar and what runs now, and the subagents.
@@ -251,6 +265,10 @@ export class AgentHeader {
       row.child(div().text_color(t.muted).child(f.model ? `${modelName(f.model)} · no task list yet` : "Waiting for the agent's first reply"));
     }
     if (f.subagents.length) row.child(div().flex_none().text_color(t.muted).child(`· ${running ? `${running} subagent${running === 1 ? "" : "s"} running` : `${done} subagent${done === 1 ? "" : "s"} done`}`));
+    if (tasks.total || f.subagents.length) {
+      row.child(this.pill(t, `ah-all-${p.pane}`,
+        [div().text_color(t.foreground).child(tasks.total ? "All tasks" : "Subagents"), div().text_color(t.muted).child("›")], "Show every task and subagent"));
+    }
     return row;
   }
 
