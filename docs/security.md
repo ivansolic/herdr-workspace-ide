@@ -104,11 +104,20 @@ Herdr asks every shared mod to say this before it is installed. Back to the [REA
 - **Writes under `~/.config/herdr-app`:** `data/ai-usage/cache.json`, the usage figures of each log file
   it has read (so it reads only what changed, and keeps daily totals of logs an agent deletes for up to
   400 days); in `shared.json`: `ai-usage.plans`, `ai-usage.budgets`, `ai-usage.budget-warned`,
-  `ai-usage.links`, `ai-usage.folded`, `ai-usage.currency` and `ai-usage.ecb`.
+  `ai-usage.links`, `ai-usage.folded`, `ai-usage.currency`, `ai-usage.ecb` and `ai-usage.detected`.
   `data/ai-usage/demo.json` exists only while demo mode is on (`scripts/ai-usage-demo.mjs`).
 - **Writes your files** only when you click Export CSV: `~/Downloads/ai-usage-<name>-<period>-<date>.csv`,
   then `open -R` shows it in Finder.
 - **Notifications:** one when a project passes 80% and one at 100% of the monthly budget you set.
+- **Agent tracker in each pane's header:** for a pane where Herdr recognizes Claude Code, Codex or Gemini
+  CLI, runs `node mods/ai-usage/scan.mjs --live <agent> <folder>` every 3 seconds while the agent works
+  (every 15 seconds otherwise). This reads that agent's newest session file for the pane's folder (the same
+  logs as above) and, for Claude, the progress tracker's snapshot. For Codex it reads one field of its
+  login, the plan (`chatgpt_plan_type` in the id token of `~/.codex/auth.json`); the tokens themselves are
+  never kept, printed or sent. For a Gemini pane it reads the pane's screen through `hc read` every 12
+  seconds and keeps only two lines that `/stats` prints, the plan (`Tier`) and the daily limit (`NN% used`);
+  the email and the rest of the screen are dropped. What it found is kept in `shared.json` as
+  `ai-usage.detected`.
 
 ## Claude Code progress tracker (Claude Code plugin)
 

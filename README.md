@@ -9,7 +9,8 @@ It works in the style of VS Code but isn't affiliated with Microsoft or Visual S
 | --- | --- |
 | **Workspace layout** | Explorer, Source Control, Search, Problems and editor tabs next to your terminals |
 | **AI usage panel** | Subscriptions and limits, cost by day, project, feature and model, for Claude Code, Gemini CLI and Codex |
-| **Claude Code progress tracker** | Tasks and subagents with progress bars above the prompt, and your plan's limits |
+| **Agent tracker** | Every pane with an agent shows its plan, limits, memory, cost and task list, for any agent |
+| **Claude Code progress tracker** | Tasks and subagents with progress bars inside Claude Code, above its prompt |
 
 Runs on macOS and Linux and needs Herdr 0.1.14 or newer. The AI usage panel also needs Node 20+.
 
@@ -44,6 +45,24 @@ Open it with the gauge icon at the bottom of the rail.
 
 Everything comes from each agent's own logs on your computer. Usage figures only, nothing is sent anywhere.
 
+## Agent tracker
+
+Every pane where Herdr recognizes an agent gets a header that tracks it. You don't set anything up:
+
+```
+◆ Codex · api-gateway · main                                                      ⤢
+Plan ChatGPT Plus │ 5h ▬▬ 31% ↻18:40 │ Week ▬ 9% │ Mem ▬ 20% │ Cost ~$1.20
+⠹ Tasks ▬▬▬ 1/3 · now: Add rate limiter
+```
+
+- **Claude Code, Codex and Gemini CLI:** their task lists (TaskCreate, `update_plan`, `write_todos`), memory, cost and plan, read live from their own session logs.
+- **Plans and limits are detected:**
+  - **Claude:** from its login.
+  - **Codex:** the plan field of its login, and its 5-hour and weekly limits from its logs.
+  - **Gemini:** run `/stats` in a Gemini pane and its plan and daily limit appear.
+- **Click ⤢** to open a window with every task and subagent.
+- **Other agents** keep Herdr's usual header for now, and plain shells keep it too.
+
 ## Claude Code progress tracker
 
 A plugin for Claude Code. It draws a band above the prompt:
@@ -62,19 +81,20 @@ The tracker writes a small snapshot per session, which the AI usage panel reads 
 
 ## Install
 
-**Herdr: layout and panels.** Run these in a terminal:
+**Herdr: layout, panels and agent tracker.** One command:
 
 ```sh
-git clone https://github.com/ivansolic/herdr-workspace-studio
-cd herdr-workspace-studio
-cp layouts/workspace-studio.json ~/.config/herdr-app/layouts/
-cp -R mods/vsc mods/ai-usage ~/.config/herdr-app/mods/
-herdr-app check ~/.config/herdr-app/mods/vsc
-herdr-app check ~/.config/herdr-app/mods/ai-usage
-herdr-app do layout.switch '{"name":"workspace-studio"}'
+git clone https://github.com/ivansolic/herdr-workspace-studio && cd herdr-workspace-studio && ./install.sh
 ```
 
-Merge `keys.json` into `~/.config/herdr-app/keys.json` for the keys below. `ctrl-shift-l` switches back to your previous layout. Source Control needs git 2.31 or newer.
+The script does five things:
+- copies the layout and both mods
+- checks them in Herdr
+- merges the keys below into yours (your own keys win)
+- switches to the layout
+- prints the Claude Code line below
+
+Anything it replaces is kept in `~/.config/herdr-app/backups/`. `ctrl-shift-l` switches back to your previous layout. Source Control needs git 2.31 or newer.
 
 **Claude Code: progress tracker.** Type this at the Claude Code prompt:
 
