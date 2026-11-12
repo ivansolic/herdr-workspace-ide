@@ -15,6 +15,13 @@ const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", 
 const CODEX_PLANS = { plus: "ChatGPT Plus", pro: "ChatGPT Pro", team: "ChatGPT Business", business: "ChatGPT Business",
   enterprise: "ChatGPT Enterprise", edu: "ChatGPT Edu", free: "ChatGPT Free" };
 const stop = (_e, cx) => cx.stop_propagation();
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+// The full name of a limit, as Claude Code's band says it.
+const LIMIT_NAMES = { "5h": "5-hour limit", Week: "Weekly limit", Day: "Daily limit" };
+// Below this width (px) the usage row uses short labels.
+const WIDE = 900;
+const hhmm = (d) => d.toTimeString().slice(0, 5);
+const kTok = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : `${Math.round(n / 1000)}k`);
 
 // Which agent runs in a pane, by what Herdr knows of its program: claude, codex, gemini, another agent, or null.
 export function agentKind(p) {
@@ -131,9 +138,10 @@ export class AgentHeader {
       .child(icon);
   }
 
-  bar(percent, t, width = 40) {
+  // A thin bar. Limits and memory warn as they fill (yellow, then red); progress passes `color`, as more is better.
+  bar(percent, t, width = 40, color) {
     const p = Math.max(0, Math.min(100, percent ?? 0));
-    const color = p >= 90 ? t.ansi1 : p >= 70 ? t.blocked : t.accent;
+    color ??= p >= 90 ? t.ansi1 : p >= 70 ? t.blocked : t.accent;
     return div().w(width).h(5).flex_none().rounded(3).bg(t.raised).child(div().h_full().rounded(3).bg(color).w(`${p}%`));
   }
 
@@ -163,23 +171,31 @@ export class AgentHeader {
         .child(this.button(t, `ah-x-${pane}`, svg("mods/pane/close.svg").size(14), () => run("pane.close", { pane }), "Close")));
   }
 
-  // Row 1: plan, limits with their reset, memory and cost, the labels in the theme's brown (ansi3).
-  usageRow(f, t) {
+  // Row 1: plan, limits with their reset, memory and cost, the labels in the theme's brown (ansi3). In the
+  // same words as Claude Code's band when the pane is wide enough, else short.
+  usageRow(f, t, wide = (this.width ?? 1200) >= WIDE) {
     const label = (text) => div().flex_none().font_semibold().text_color(t.ansi3).child(text);
+    const dim = (text) => div().flex_none().text_color(t.muted).child(text);
     const sep = () => div().flex_none().text_color(t.border).child("│");
     const parts = [h_flex().gap(4).items_center().child(label("Plan")).child(div().truncate().text_color(t.accent).child(f.plan ?? "–"))];
     const now = Date.now();
     for (const l of f.limits) {
-      const reset = l.resetsAt ? (l.resetsAt - now < 24 * 3600e3 ? `${new Date(l.resetsAt).toTimeString().slice(0, 5)}` : "") : l.resetsIn ? `in ${l.resetsIn}` : "";
-      parts.push(h_flex().gap(4).items_center().child(label(l.label)).child(this.bar(l.percent, t))
-        .child(div().text_color(t.foreground).child(`${Math.round(l.percent)}%`))
-        .when(Boolean(reset), (el) => el.child(div().text_color(t.muted).child(`↻${reset}`))));
+      const at = l.resetsAt ? new Date(l.resetsAt) : null;
+      const reset = at ? (l.resetsAt - now < 24 * 3600e3 ? hhmm(at) : `${WEEKDAYS[at.getDay()]} ${hhmm(at)}`) : l.resetsIn ? `in ${l.resetsIn}` : "";
+      parts.push(h_flex().gap(4).items_center().child(label(wide ? LIMIT_NAMES[l.label] ?? l.label : l.label)).child(this.bar(l.percent, t, wide ? 56 : 40))
+        .child(div().flex_none().text_color(t.foreground).child(`${Math.round(l.percent)}%`))
+        .when(Boolean(reset), (el) => el.child(dim(wide ? `· resets ${reset}` : `↻${reset}`))));
     }
     if (f.context?.percent !== undefined && f.context?.percent !== null) {
-      parts.push(h_flex().gap(4).items_center().child(label("Mem")).child(this.bar(f.context.percent, t)).child(div().text_color(t.foreground).child(`${f.context.percent}%`)));
+      const of = f.context.tokens && f.context.window ? `· ${kTok(f.context.tokens)} of ${kTok(f.context.window)} tokens` : "";
+      parts.push(h_flex().gap(4).items_center().child(label(wide ? "Memory" : "Mem")).child(this.bar(f.context.percent, t, wide ? 56 : 40))
+        .child(div().flex_none().text_color(t.foreground).child(`${f.context.percent}%`))
+        .when(wide && Boolean(of), (el) => el.child(dim(of))));
     }
+    // What the work would cost per token at API list price; on a subscription it is a comparison, not a bill.
     parts.push(h_flex().gap(4).items_center().child(label("Cost"))
-      .child(div().text_color(t.foreground).child(f.cost === null ? "–" : `${f.exact ? "" : "~"}${this.h.money(f.cost)}`)));
+      .child(div().flex_none().text_color(t.foreground).child(f.cost === null ? "–" : `${f.exact ? "" : "~"}${this.h.money(f.cost)}`))
+      .when(wide && f.cost !== null, (el) => el.child(dim("at API price"))));
     const row = h_flex().h(18).gap(8).items_center().overflow_hidden();
     parts.forEach((part, i) => { if (i) row.child(sep()); row.child(part); });
     return row;
@@ -194,7 +210,7 @@ export class AgentHeader {
       .child(div().w(12).flex_none().text_color(busy ? t.working : t.accent).when(busy, (el) => el.frames(SPINNER, 90)).child(busy ? SPINNER[0] : tasks.total && tasks.done === tasks.total ? "✓" : "·"));
     if (tasks.total) {
       row.child(div().flex_none().font_semibold().text_color(t.ansi3).child("Tasks"))
-        .child(this.bar((tasks.done / tasks.total) * 100, t, 56))
+        .child(this.bar((tasks.done / tasks.total) * 100, t, 56, tasks.done === tasks.total ? t.done : t.accent))
         .child(div().flex_none().text_color(t.foreground).child(`${tasks.done}/${tasks.total}`))
         .when(Boolean(tasks.active), (el) => el.child(div().min_w(0).truncate().text_color(t.muted).child(`· now: ${tasks.active}`)));
     } else {
@@ -210,6 +226,7 @@ export class AgentHeader {
     const kind = agentKind(p);
     const root = v_flex().id(`agent-head-${p.pane}`).size_full().px(10).py(4).gap(2).justify_center().bg(t.background).border_b(1).border_color(t.border)
       .text_size(12).on_hover((hovered, cx) => { this.hovered = hovered; cx.notify(); })
+      .on_size_change((size, cx) => { if (Math.abs((this.width ?? 0) - size.width) > 16) { this.width = size.width; cx.notify(); } })
       .on_click(() => run("pane.focus", { pane: p.pane }))
       .child(this.titleRow(p, t, kind));
     if (!kind) return root.child(div().h(18).text_size(11).text_color(t.muted).truncate().child(p.cwd ? folder(p.cwd) : ""));
@@ -231,17 +248,29 @@ export class AgentHeader {
     const section = (title) => div().pt(12).pb(4).text_size(11).font_bold().text_color(t.foreground).child(title.toUpperCase());
     const body = v_flex().id("ad-body").flex_1().min_h(0).overflow_y_scrollbar().px(14).pb(14)
       .child(section("Usage"))
-      .child(this.usageRow(f, t))
+      .child(this.usageRow(f, t, true))
       .child(div().pt(4).text_size(11).text_color(t.muted).child(
         [f.model ? `Model ${modelName(f.model)}` : null, f.context?.tokens ? `${Math.round(f.context.tokens / 1000)}k of ${Math.round((f.context.window ?? 0) / 1000)}k tokens in memory` : null,
           f.exact ? "cost exact for this session" : "cost estimated at API list price"].filter(Boolean).join(" · ")))
       .child(section(f.tasks?.total ? `Tasks · ${f.tasks.done} of ${f.tasks.total} done` : "Tasks"));
     if (!f.tasks?.items?.length && !f.tasks?.total) body.child(div().text_size(12).text_color(t.muted).child("No task list in this session yet."));
-    for (const item of f.tasks?.items ?? []) {
-      const mark = item.status === "completed" ? "✓" : item.status === "in_progress" ? "◌" : "○";
-      body.child(h_flex().py(2).gap(8).items_center()
-        .child(div().w(14).text_color(item.status === "completed" ? t.accent : item.status === "in_progress" ? t.working : t.muted).child(mark))
-        .child(div().flex_1().min_w(0).truncate().text_color(item.status === "completed" ? t.muted : t.foreground).child(item.text)));
+    // As Claude Code lists them: open tasks first, done ones struck through and folded behind "+N completed".
+    const items = f.tasks?.items ?? [];
+    const open = items.filter((i) => i.status !== "completed"), done = items.filter((i) => i.status === "completed");
+    const row = (item) => {
+      const isDone = item.status === "completed", now = item.status === "in_progress";
+      return h_flex().py(2).gap(8).items_center()
+        .child(div().w(14).flex_none().text_color(isDone ? t.accent : now ? t.working : t.muted).child(isDone ? "✓" : now ? "◌" : "☐"))
+        .child(div().flex_1().min_w(0).truncate().text_color(isDone ? t.muted : t.foreground).when(isDone, (el) => el.line_through())
+          .when(now, (el) => el.font_semibold()).child(item.text));
+    };
+    for (const item of open) body.child(row(item));
+    if (done.length) {
+      const shown = this.showDone ? done : done.slice(0, 3);
+      for (const item of shown) body.child(row(item));
+      if (done.length > 3) body.child(div().id("ad-done").pl(22).py(2).text_size(12).text_color(t.accent).cursor_pointer()
+        .on_click((_e, cx) => { this.showDone = !this.showDone; cx.notify(); })
+        .child(this.showDone ? "Show fewer" : `… +${done.length - 3} completed`));
     }
     body.child(section(f.subagents.length ? `Subagents · ${f.subagents.length}` : "Subagents"));
     if (!f.subagents.length) body.child(div().text_size(12).text_color(t.muted).child(kind === "claude" ? "No subagents in this session." : "This agent has no subagents."));
@@ -251,7 +280,7 @@ export class AgentHeader {
         .child(h_flex().gap(8).items_center()
           .child(div().w(14).text_color(a.status === "running" ? t.working : a.status === "done" ? t.accent : t.ansi1).child(mark))
           .child(div().flex_1().min_w(0).truncate().child(a.description))
-          .when(Boolean(a.steps), (el) => el.child(this.bar((a.steps.done / a.steps.total) * 100, t, 48)).child(div().text_size(11).child(`${a.steps.done}/${a.steps.total}`))))
+          .when(Boolean(a.steps), (el) => el.child(this.bar((a.steps.done / a.steps.total) * 100, t, 48, t.accent)).child(div().text_size(11).child(`${a.steps.done}/${a.steps.total}`))))
         .child(div().pl(22).text_size(11).text_color(t.muted).truncate().child(
           [a.type, a.model ? modelName(a.model) : null, a.tools ? `${a.tools} tool calls` : null,
             a.startedAt ? this.h.duration((a.endedAt ?? now) - a.startedAt) : null].filter(Boolean).join(" · "))));
