@@ -78,6 +78,7 @@ declare module 'claude-code' {
       counted: number
       warned: string[]
       isHidden: boolean
+      isComposing: boolean
       tick: number
     }
   }

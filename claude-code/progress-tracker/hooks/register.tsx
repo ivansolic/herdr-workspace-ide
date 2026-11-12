@@ -17,6 +17,9 @@ const plan = atom({ plugin: 'progress-tracker', key: 'plan' } as const, null as 
 const counted = atom({ plugin: 'progress-tracker', key: 'counted' } as const, 0)
 const warned = atom({ plugin: 'progress-tracker', key: 'warned' } as const, [] as string[])
 const isHidden = atom({ plugin: 'progress-tracker', key: 'isHidden' } as const, false)
+// True while the prompt holds a slash command or an @ mention being typed: the band steps aside so Claude
+// Code's suggestions sit right above the prompt, as they do without the band.
+const isComposing = atom({ plugin: 'progress-tracker', key: 'isComposing' } as const, false)
 // Written once a second while something runs, so the band redraws its spinner and elapsed time.
 const tick = atom({ plugin: 'progress-tracker', key: 'tick' } as const, 0)
 
@@ -425,6 +428,13 @@ export const register: Register = on => {
     return { text: hidden ? 'Tracker hidden.' : 'Tracker shown.' }
   })
 
+  on('prompt.change', async ($, e, next) => {
+    const word = e.text.slice(0, e.cursor).split(/\s/).pop() ?? ''
+    const composing = /^\s*\//.test(e.text) || word.startsWith('@')
+    if (composing !== (await read($, isComposing))) await update($, isComposing, () => composing)
+    return next(e)
+  })
+
   on('agent.spawn', async ($, e, next) => {
     const started = await next(e.resume ? e : { ...e, prompt: e.prompt + SUBAGENT_HINT })
     if (started.deny !== undefined || !started.agentId) return started
@@ -537,7 +547,7 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (e.props.hasSurvey || (await read($, isHidden))) return next(e)
+    if (e.props.hasSurvey || (await read($, isHidden)) || (await read($, isComposing))) return next(e)
 
     const board = await read($, tasks)
     const list = await read($, agents)

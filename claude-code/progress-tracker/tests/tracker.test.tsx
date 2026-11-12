@@ -100,3 +100,21 @@ test('a subscription shows limits with resets, memory and the pane compares', as
   await pane.unmount()
 })
 
+
+test('the band steps aside while a slash command or a mention is typed', async ($, on) => {
+  on('clock.now', () => ({ value: 1000 }))
+  on('prompt.change', (_, e) => ({ text: e.text }))
+  const shown = async () => {
+    const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+    const found = await ui.find({ type: 'Button', key: 'history' })
+    await ui.unmount()
+    return Boolean(found)
+  }
+  expect(await shown()).toBe(true)
+  await $.prompt.change({ text: '/compa', cursor: 6, origin: { kind: 'edit' } })
+  expect(await shown()).toBe(false)
+  await $.prompt.change({ text: 'look at @src/ma', cursor: 15, origin: { kind: 'edit' } })
+  expect(await shown()).toBe(false)
+  await $.prompt.change({ text: 'look at @src/main.ts and fix it', cursor: 31, origin: { kind: 'edit' } })
+  expect(await shown()).toBe(true)
+})
