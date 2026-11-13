@@ -8,7 +8,7 @@ import { v_flex, h_flex } from "gpui-base";
 import { panes, focused, layout, exec, hc, home, appHome, theme, run, shared, setShared, props, openOverlay, closeOverlay } from "herdr";
 import { geminiScreen } from "./lib/live.js";
 import { modelName } from "./lib/usage.js";
-import { CHAR, LIMIT_NAMES, HEIGHTS, TINY, barWidth, heightFor, usageRows } from "./lib/fit.js";
+import { CHAR, LIMIT_NAMES, HEIGHTS, TINY, barWidth, heightFor, settle, usageRows } from "./lib/fit.js";
 
 // Plans the logs or screens report, for the AI usage panel too: { openai: { plan, at }, google: { plan, limit, at } }.
 export const DETECTED_KEY = "ai-usage.detected";
@@ -54,6 +54,7 @@ export class AgentHeader {
     this.hovered = false;
     this.tick(cx);
     cx.timer.every(3000, (cx) => this.tick(cx));
+    cx.timer.every(250, () => this.fit());
   }
 
   me() {
@@ -304,7 +305,6 @@ export class AgentHeader {
       .on_size_change((size, cx) => { if (Math.abs((this.width ?? 0) - size.width) > 16) { this.width = size.width; cx.notify(); } })
       .on_click(() => run("pane.focus", { pane: p.pane }));
     const f = kind && kind !== "other" ? this.facts(kind) : null, form = this.form(f), folded = Boolean(shared(FOLD_KEY));
-    this.fit(p, folded ? HEIGHTS.folded : !f || form === "inline" ? HEIGHTS.one : form === "wide" ? HEIGHTS.two : heightFor(this.rows(f, form === "medium")));
     root.child(this.titleRow(p, t, kind, f && (folded || form === "medium" || form === "narrow") ? this.tasksBadge(f, t) : null));
     if (folded) return root;
     if (!kind) return root.child(div().h(18).text_size(11).text_color(t.muted).truncate().child(p.cwd ? folder(p.cwd) : ""));
@@ -319,9 +319,21 @@ export class AgentHeader {
     return root.child(this.usageRow(f, t)).child(this.tasksRow(f, p, t));
   }
 
-  // Says what height (px) this pane's header needs; the first pane of the shown tab sets the layout's header
-  // height to the tallest need of its tab (or the folded height), so no header clips and none is empty.
-  fit(p, px) {
+  // The height this pane's header needs for its form.
+  needed(p) {
+    const kind = agentKind(p);
+    const f = kind && kind !== "other" ? this.facts(kind) : null, form = this.form(f);
+    if (shared(FOLD_KEY)) return HEIGHTS.folded;
+    return !f || form === "inline" ? HEIGHTS.one : form === "wide" ? HEIGHTS.two : heightFor(this.rows(f, form === "medium"));
+  }
+
+  // On a timer, never while drawing (what render writes doesn't last): shares this header's need and, in
+  // the first pane of the shown tab, sets the layout's header height to the tallest need of its tab (or the
+  // folded height), so no header clips and none is empty.
+  fit() {
+    const p = this.me();
+    if (!p) return;
+    const px = this.needed(p);
     const all = panes(), need = {};
     for (const [id, h] of Object.entries(shared(NEED_KEY) ?? {})) if (all.some((q) => q.pane === id)) need[id] = h;
     if (shared(NEED_KEY)?.[p.pane] !== px || Object.keys(need).length !== Object.keys(shared(NEED_KEY) ?? {}).length) {
@@ -330,8 +342,13 @@ export class AgentHeader {
     }
     need[p.pane] = px;
     const tab = focused()?.tab ?? p.tab, shown = all.filter((q) => q.tab === tab);
-    if (shown[0]?.pane !== p.pane) return;
+    if (shown[0]?.pane !== p.pane) { this.want = null; return; }
     const height = shared(FOLD_KEY) ? HEIGHTS.folded : Math.max(...shown.map((q) => need[q.pane] ?? HEIGHTS.two));
+    // Folding and unfolding apply at once; a height that follows the panes' widths waits for them to settle.
+    const fold = height === HEIGHTS.folded || this.want?.height === HEIGHTS.folded;
+    const { want, ready } = settle(this.want, height, Date.now(), fold ? 0 : undefined);
+    this.want = want;
+    if (!ready) return;
     if (asked.px === height && Date.now() - asked.at < 3000) return;
     const l = layout();
     if (!l || typeof l !== "object") return;

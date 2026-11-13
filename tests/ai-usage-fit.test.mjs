@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { usageParts, usageRows, heightFor, HEIGHTS } from "../mods/ai-usage/lib/fit.js";
+import { usageParts, usageRows, heightFor, settle, SETTLE_MS, HEIGHTS } from "../mods/ai-usage/lib/fit.js";
 
 const now = Date.parse("2026-11-13T08:00:00Z");
 const facts = {
@@ -30,4 +30,17 @@ test("a tiny pane puts each part on its own row, and every row fits in the heade
   assert.ok(heightFor(rows) >= 3 + 18 + rows * 19, `${heightFor(rows)} px for ${rows} rows`);
   // With its separator, each part fits across the pane (less its 10 px sides).
   for (const [i, size] of usageParts(facts, 170, false, now).entries()) assert.ok(size + (i ? 14 : 0) <= 150, `part ${i}: ${Math.round(size)} px`);
+});
+
+test("a new header height waits until the panes have asked for it for a second", () => {
+  let { want, ready } = settle(null, 82, 0);
+  assert.equal(ready, false);
+  ({ want, ready } = settle(want, 82, 600));
+  assert.equal(ready, false);
+  // The width moved on: the wait starts again for the new height.
+  ({ want, ready } = settle(want, 121, 900));
+  assert.deepEqual([want.since, ready], [900, false]);
+  assert.equal(settle(want, 121, 900 + SETTLE_MS).ready, true);
+  // Folding applies at once.
+  assert.equal(settle(want, HEIGHTS.folded, 1000, 0).ready, true);
 });

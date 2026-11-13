@@ -42,3 +42,13 @@ export function usageRows(f, width, wide, now = Date.now()) {
   });
   return rows;
 }
+
+// How long the panes must ask for the same header height before it is applied, so dragging or splitting a
+// pane resizes its terminal once, not at every step (a burst of resizes leaves Claude Code's screen garbled).
+export const SETTLE_MS = 1000;
+
+// The height wanted now, and whether it has been wanted for `wait` ms: { want: { height, since }, ready }.
+export function settle(prev, height, now, wait = SETTLE_MS) {
+  const want = prev?.height === height ? prev : { height, since: now };
+  return { want, ready: now - want.since >= wait };
+}
