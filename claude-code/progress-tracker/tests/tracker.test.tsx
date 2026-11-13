@@ -118,3 +118,30 @@ test('the band steps aside while a slash command or a mention is typed', async (
   await $.prompt.change({ text: 'look at @src/main.ts and fix it', cursor: 31, origin: { kind: 'edit' } })
   expect(await shown()).toBe(true)
 })
+
+test('/studio install fetches the repository, runs its install.sh and removes the temporary folder', async ($, on) => {
+  const ran: string[][] = []
+  on('process.run', (_, e) => {
+    ran.push([...e.argv])
+    const [cmd] = e.argv
+    if (cmd === 'mktemp') return { value: { exitCode: 0, stdout: '/tmp/studio.x\n', stderr: '' } }
+    if (cmd === 'bash') return { value: { exitCode: 0, stdout: 'switched to the workspace-studio layout\nDone.\n', stderr: '' } }
+    return { value: { exitCode: 0, stdout: '/usr/local/bin/herdr-app\n', stderr: '' } }
+  })
+  const { text } = await $.command.run({ command: 'studio', args: 'install --no-switch' })
+  expect(text).toContain('Herdr Workspace Studio installed.')
+  expect(ran.some(a => a[0] === 'git' && a.includes('https://github.com/ivansolic/herdr-workspace-studio'))).toBe(true)
+  expect(ran.find(a => a[0] === 'bash')).toEqual(['bash', '/tmp/studio.x/studio/install.sh', '--no-switch'])
+  expect(ran.at(-1)).toEqual(['rm', '-rf', '/tmp/studio.x'])
+})
+
+test('/studio install says so when Herdr is missing, and runs nothing else', async ($, on) => {
+  const ran: string[][] = []
+  on('process.run', (_, e) => {
+    ran.push([...e.argv])
+    return { value: { exitCode: 1, stdout: '', stderr: '' } }
+  })
+  const { text } = await $.command.run({ command: 'studio', args: 'install' })
+  expect(text).toContain('Herdr is not installed')
+  expect(ran.length).toBe(1)
+})

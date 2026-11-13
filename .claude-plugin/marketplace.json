@@ -5,7 +5,7 @@
     {
       "name": "progress-tracker",
       "source": "./claude-code/progress-tracker",
-      "description": "Claude Code band above the prompt: tasks and subagents with progress bars, and your plan's limits, memory and cost"
+      "description": "Claude Code band above the prompt: tasks and subagents with progress bars, and your plan's limits, memory and cost; /studio install puts Herdr Workspace Studio into the Herdr app"
     }
   ]
 }
