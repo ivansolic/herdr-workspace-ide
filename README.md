@@ -110,7 +110,16 @@ The tracker writes a small snapshot per session, which the AI usage panel reads 
 
 ## Install
 
-**Herdr: layout, panels and agent tracker.** One command:
+**Everything from Claude Code.** Type these two lines at the Claude Code prompt:
+
+```
+/plugin install progress-tracker --marketplace ivansolic/herdr-workspace-studio
+/studio install
+```
+
+The first adds the progress tracker to Claude Code. The second fetches this repository and runs its `install.sh` for the Herdr side. `/studio install --no-switch` keeps your current layout, and `/studio update` installs the latest version again.
+
+**From a terminal.** The Herdr side alone:
 
 ```sh
 git clone https://github.com/ivansolic/herdr-workspace-studio && cd herdr-workspace-studio && ./install.sh
@@ -120,16 +129,12 @@ The script does five things:
 - copies the layout and both mods
 - checks them in Herdr
 - merges the keys below into yours (your own keys win)
-- switches to the layout
-- prints the Claude Code line below
+- switches to the layout (`--no-switch` skips this)
+- prints the Claude Code line above
 
 Anything it replaces is kept in `~/.config/herdr-app/backups/`. `ctrl-shift-l` switches back to your previous layout. Source Control needs git 2.31 or newer.
 
-**Claude Code: progress tracker.** Type this at the Claude Code prompt:
-
-```
-/plugin install progress-tracker --marketplace ivansolic/herdr-workspace-studio
-```
+**From herdr.dev.** The mods are listed at [herdr.dev/mods](https://herdr.dev/mods). Ask Herdr's agent to add them, and it builds them in from [RECIPE.md](RECIPE.md), either with the `workspace-studio` layout or in your own layout.
 
 ## Keys
 

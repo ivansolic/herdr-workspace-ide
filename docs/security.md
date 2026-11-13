@@ -133,3 +133,7 @@ Herdr asks every shared mod to say this before it is installed. Back to the [REA
 - **Adds a `progress` tool** for subagents, and one line to each subagent's prompt asking it to report
   its steps with that tool. The tool only updates the progress bar.
 - **Keeps** the mode, budgets and plan price you set with `/tracker` in Claude Code's plugin store.
+- **`/studio install` and `/studio update`**, only when you type them: check that `herdr-app` exists,
+  make a temporary folder (`mktemp -d`), `git clone --depth 1` this repository from GitHub into it, run
+  its `install.sh` (see Install in the README: it copies the layout and mods into `~/.config/herdr-app`,
+  keeping what it replaces in `backups/`, and merges keys), then remove the folder. Nothing else runs.
