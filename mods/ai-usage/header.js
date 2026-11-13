@@ -5,7 +5,7 @@
 // Panes without an agent get Herdr's usual header: icon, name, folder, status, split / zoom / close.
 import { div, svg, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { panes, focused, layout, exec, hc, home, appHome, theme, run, shared, setShared, props, openOverlay, closeOverlay } from "herdr";
+import { panes, focused, layout, exec, hc, home, appHome, readTextFile, theme, run, shared, setShared, props, openOverlay, closeOverlay } from "herdr";
 import { geminiScreen } from "./lib/live.js";
 import { modelName } from "./lib/usage.js";
 import { CHAR, LIMIT_NAMES, HEIGHTS, TINY, barWidth, heightFor, settle, usageRows } from "./lib/fit.js";
@@ -59,14 +59,32 @@ export class AgentHeader {
 
   me() {
     const pane = props()?.pane;
-    return panes().find((p) => p.pane === pane) ?? null;
+    const p = panes().find((q) => q.pane === pane) ?? null;
+    // Demo mode (scripts/ai-usage-demo.mjs): a pane in the demo's folder shows its made-up agent.
+    const d = this.demo;
+    if (!p || !d || !p.cwd?.endsWith(`/${d.folder}`)) return p;
+    return { ...p, title: d.title, app: "claude-code", status: d.status, branch: d.branch,
+      program: { ...p.program, key: "claude", name: "Claude Code", icon: "icons/claude.svg", tint: false, agent: true, shell: false } };
   }
+
+  // Whether this pane shows the demo agent, and whether the headers are folded (by the button, or the demo).
+  isDemo(p) { return Boolean(this.demo && p?.cwd?.endsWith(`/${this.demo.folder}`)); }
+  folded() { return Boolean(shared(FOLD_KEY) || this.demo?.folded); }
 
   // Every 3 s while the agent works, every 15 s otherwise; Gemini's screen every 12 s for its plan and limit.
   tick(cx) {
     this.ticks++;
+    cx.spawn(async (cx) => {
+      let demo = null;
+      try { demo = JSON.parse((await readTextFile(`${appHome()}/data/${this.h.MOD}/demo.json`)) ?? "null")?.agent ?? null; } catch { demo = null; }
+      if (JSON.stringify(demo) !== JSON.stringify(this.demo)) { this.demo = demo; cx.notify(); }
+      // --detail opens the demo pane's task window once, for its screenshot.
+      if (demo?.detail && !this.demoOpened && props()?.pane && this.isDemo(this.me())) { this.demoOpened = true; this.openDetail(); }
+    });
     const p = this.me(), kind = agentKind(p);
-    if (!p || !kind || kind === "other") return;
+    // A task window whose pane has closed closes too.
+    if (props()?.view === "agent" && props()?.overlay && !panes().some((q) => q.pane === props()?.pane)) { closeOverlay(props().overlay); return; }
+    if (!p || !kind || kind === "other" || this.isDemo(p)) return;
     const busy = p.status === "working" || props()?.view === "agent";
     if (!this.fetching && (busy || !this.live || this.ticks % 5 === 0) && p.cwd) {
       this.fetching = true;
@@ -105,6 +123,7 @@ export class AgentHeader {
 
   // The plan, limits, context and cost to show, from the live session, the tracker snapshot and what was detected.
   facts(kind) {
+    if (this.isDemo(this.me())) return this.demo.facts;
     const live = this.live ?? {}, snap = live.snapshot, detected = shared(DETECTED_KEY) ?? {};
     const chosen = (provider) => {
       const id = { ...this.h.DEFAULT_PLANS, ...(shared(this.h.PLANS_KEY) ?? {}) }[provider];
@@ -166,6 +185,8 @@ export class AgentHeader {
     const tasks = (f.tasks?.total ? `Tasks ${f.tasks.done}/${f.tasks.total} ` : "") + (f.subagents.length ? `· ${f.subagents.length} subagents done ` : "");
     const inline = shown + PART + (tasks ? (tasks.length + 2) * CHAR + BAR + 2 * PART : 34 * CHAR);
     this.inline = w >= inline - (this.inline ? 40 : 0);
+    // What one row leaves for "now: <task>", which a text box doesn't shrink below by itself.
+    this.spare = w - inline;
     if (this.inline) return "inline";
     if (w >= need) return "wide";
     return this.rows(f, true) <= 2 ? "medium" : "narrow";
@@ -202,7 +223,7 @@ export class AgentHeader {
       .when(p.status === "blocked", (el) => el.child(div().flex_none().px(6).h(18).flex().items_center().rounded(5).bg(this.h.tint(t.blocked, "26"))
         .text_size(10.5).font_semibold().text_color(t.blocked).child("Needs you")))
       .when(p.status === "done", (el) => el.child(div().size(7).flex_none().rounded(4).bg(t.done)))
-      .when(this.hovered, (el) => el
+      .when(this.hovered || Boolean(this.demo?.hovered), (el) => el
         .child(this.button(t, `ah-f-${pane}`, svg(`mods/${this.h.MOD}/icons/${shared(FOLD_KEY) ? "unfold" : "fold"}.svg`).size(14),
           () => setShared(FOLD_KEY, !shared(FOLD_KEY)), shared(FOLD_KEY) ? "Show usage and tasks in every pane" : "Fold every pane's header to one row"))
         .child(this.button(t, `ah-r-${pane}`, svg("mods/pane/split-right.svg").size(14), () => run("pane.split", { direction: "right", pane }), "Split right"))
@@ -283,7 +304,8 @@ export class AgentHeader {
       row.child(div().flex_none().font_semibold().text_color(t.ansi3).child("Tasks"))
         .child(this.bar((tasks.done / tasks.total) * 100, t, 56, tasks.done === tasks.total ? t.done : t.accent))
         .child(div().flex_none().text_color(t.foreground).child(`${tasks.done}/${tasks.total}`))
-        .when(Boolean(tasks.active), (el) => el.child(div().min_w(0).truncate().text_color(t.muted).child(`· now: ${tasks.active}`)));
+        .when(Boolean(tasks.active) && (this.form(f) !== "inline" || this.spare >= 60), (el) => el.child(div().flex_1().min_w(0)
+          .when(this.form(f) === "inline", (el) => el.max_w(this.spare - 8)).truncate().text_color(t.muted).child(`· now: ${tasks.active}`)));
     } else {
       row.child(div().text_color(t.muted).child(f.model ? `${modelName(f.model)} · no task list yet` : "Waiting for the agent's first reply"));
     }
@@ -304,7 +326,7 @@ export class AgentHeader {
       .text_size(12).on_hover((hovered, cx) => { this.hovered = hovered; cx.notify(); })
       .on_size_change((size, cx) => { if (Math.abs((this.width ?? 0) - size.width) > 16) { this.width = size.width; cx.notify(); } })
       .on_click(() => run("pane.focus", { pane: p.pane }));
-    const f = kind && kind !== "other" ? this.facts(kind) : null, form = this.form(f), folded = Boolean(shared(FOLD_KEY));
+    const f = kind && kind !== "other" ? this.facts(kind) : null, form = this.form(f), folded = this.folded();
     root.child(this.titleRow(p, t, kind, f && (folded || form === "medium" || form === "narrow") ? this.tasksBadge(f, t) : null));
     if (folded) return root;
     if (!kind) return root.child(div().h(18).text_size(11).text_color(t.muted).truncate().child(p.cwd ? folder(p.cwd) : ""));
@@ -323,7 +345,7 @@ export class AgentHeader {
   needed(p) {
     const kind = agentKind(p);
     const f = kind && kind !== "other" ? this.facts(kind) : null, form = this.form(f);
-    if (shared(FOLD_KEY)) return HEIGHTS.folded;
+    if (this.folded()) return HEIGHTS.folded;
     return !f || form === "inline" ? HEIGHTS.one : form === "wide" ? HEIGHTS.two : heightFor(this.rows(f, form === "medium"));
   }
 
@@ -343,7 +365,7 @@ export class AgentHeader {
     need[p.pane] = px;
     const tab = focused()?.tab ?? p.tab, shown = all.filter((q) => q.tab === tab);
     if (shown[0]?.pane !== p.pane) { this.want = null; return; }
-    const height = shared(FOLD_KEY) ? HEIGHTS.folded : Math.max(...shown.map((q) => need[q.pane] ?? HEIGHTS.two));
+    const height = this.folded() ? HEIGHTS.folded : Math.max(...shown.map((q) => need[q.pane] ?? HEIGHTS.two));
     // Folding and unfolding apply at once; a height that follows the panes' widths waits for them to settle.
     const fold = height === HEIGHTS.folded || this.want?.height === HEIGHTS.folded;
     const { want, ready } = settle(this.want, height, Date.now(), fold ? 0 : undefined);
@@ -381,7 +403,7 @@ export class AgentHeader {
       .child(section("Usage"))
       .child(this.usageRow(f, t, true))
       .child(div().pt(4).text_size(11).text_color(t.muted).child(
-        [f.model ? `Model ${modelName(f.model)}` : null, f.context?.tokens ? `${Math.round(f.context.tokens / 1000)}k of ${Math.round((f.context.window ?? 0) / 1000)}k tokens in memory` : null,
+        [f.model ? `Model ${modelName(f.model)}` : null, f.context?.tokens ? `${kTok(f.context.tokens)} of ${kTok(f.context.window ?? 0)} tokens in memory` : null,
           f.exact ? "cost exact for this session" : "cost estimated at API list price"].filter(Boolean).join(" · ")))
       .child(section(f.tasks?.total ? `Tasks · ${f.tasks.done} of ${f.tasks.total} done` : "Tasks"));
     if (!f.tasks?.items?.length && !f.tasks?.total) body.child(div().text_size(12).text_color(t.muted).child("No task list in this session yet."));
