@@ -1,4 +1,4 @@
-// Herdr Workspace IDE: one mod, one view per layout block, chosen by props.view.
+// Herdr Workspace Studio: one mod, one view per layout block, chosen by props.view.
 // One mod so every view shares lib/ (a mod cannot import another mod's files).
 import { View } from "gpui-kit";
 import { props as blockProps } from "herdr";

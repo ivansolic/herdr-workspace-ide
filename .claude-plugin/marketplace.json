@@ -1,0 +1,11 @@
+{
+  "name": "herdr-workspace-studio",
+  "owner": { "name": "ivansolic" },
+  "plugins": [
+    {
+      "name": "progress-tracker",
+      "source": "./claude-code/progress-tracker",
+      "description": "Claude Code band above the prompt: tasks and subagents with progress bars, and your plan's limits, memory and cost"
+    }
+  ]
+}

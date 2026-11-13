@@ -1,0 +1,7 @@
+{
+  "name": "progress-tracker",
+  "version": "1.0.0",
+  "description": "Band above the prompt: tasks and subagents with progress bars, plus your plan limits, memory and cost",
+  "types": "./types/index.d.ts",
+  "license": "MIT"
+}
