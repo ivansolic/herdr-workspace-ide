@@ -82,6 +82,8 @@ export class AgentHeader {
       if (demo?.detail && !this.demoOpened && props()?.pane && this.isDemo(this.me())) { this.demoOpened = true; this.openDetail(); }
     });
     const p = this.me(), kind = agentKind(p);
+    // A task window whose pane has closed closes too.
+    if (props()?.view === "agent" && props()?.overlay && !panes().some((q) => q.pane === props()?.pane)) { closeOverlay(props().overlay); return; }
     if (!p || !kind || kind === "other" || this.isDemo(p)) return;
     const busy = p.status === "working" || props()?.view === "agent";
     if (!this.fetching && (busy || !this.live || this.ticks % 5 === 0) && p.cwd) {
@@ -183,6 +185,8 @@ export class AgentHeader {
     const tasks = (f.tasks?.total ? `Tasks ${f.tasks.done}/${f.tasks.total} ` : "") + (f.subagents.length ? `· ${f.subagents.length} subagents done ` : "");
     const inline = shown + PART + (tasks ? (tasks.length + 2) * CHAR + BAR + 2 * PART : 34 * CHAR);
     this.inline = w >= inline - (this.inline ? 40 : 0);
+    // What one row leaves for "now: <task>", which a text box doesn't shrink below by itself.
+    this.spare = w - inline;
     if (this.inline) return "inline";
     if (w >= need) return "wide";
     return this.rows(f, true) <= 2 ? "medium" : "narrow";
@@ -300,7 +304,8 @@ export class AgentHeader {
       row.child(div().flex_none().font_semibold().text_color(t.ansi3).child("Tasks"))
         .child(this.bar((tasks.done / tasks.total) * 100, t, 56, tasks.done === tasks.total ? t.done : t.accent))
         .child(div().flex_none().text_color(t.foreground).child(`${tasks.done}/${tasks.total}`))
-        .when(Boolean(tasks.active), (el) => el.child(div().min_w(0).truncate().text_color(t.muted).child(`· now: ${tasks.active}`)));
+        .when(Boolean(tasks.active) && (this.form(f) !== "inline" || this.spare >= 60), (el) => el.child(div().flex_1().min_w(0)
+          .when(this.form(f) === "inline", (el) => el.max_w(this.spare - 8)).truncate().text_color(t.muted).child(`· now: ${tasks.active}`)));
     } else {
       row.child(div().text_color(t.muted).child(f.model ? `${modelName(f.model)} · no task list yet` : "Waiting for the agent's first reply"));
     }
@@ -398,7 +403,7 @@ export class AgentHeader {
       .child(section("Usage"))
       .child(this.usageRow(f, t, true))
       .child(div().pt(4).text_size(11).text_color(t.muted).child(
-        [f.model ? `Model ${modelName(f.model)}` : null, f.context?.tokens ? `${Math.round(f.context.tokens / 1000)}k of ${Math.round((f.context.window ?? 0) / 1000)}k tokens in memory` : null,
+        [f.model ? `Model ${modelName(f.model)}` : null, f.context?.tokens ? `${kTok(f.context.tokens)} of ${kTok(f.context.window ?? 0)} tokens in memory` : null,
           f.exact ? "cost exact for this session" : "cost estimated at API list price"].filter(Boolean).join(" · ")))
       .child(section(f.tasks?.total ? `Tasks · ${f.tasks.done} of ${f.tasks.total} done` : "Tasks"));
     if (!f.tasks?.items?.length && !f.tasks?.total) body.child(div().text_size(12).text_color(t.muted).child("No task list in this session yet."));
