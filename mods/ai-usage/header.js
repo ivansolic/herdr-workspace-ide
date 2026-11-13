@@ -8,6 +8,7 @@ import { v_flex, h_flex } from "gpui-base";
 import { panes, focused, layout, exec, hc, home, appHome, theme, run, shared, setShared, props, openOverlay, closeOverlay } from "herdr";
 import { geminiScreen } from "./lib/live.js";
 import { modelName } from "./lib/usage.js";
+import { CHAR, LIMIT_NAMES, HEIGHTS, heightFor, usageRows } from "./lib/fit.js";
 
 // Plans the logs or screens report, for the AI usage panel too: { openai: { plan, at }, google: { plan, limit, at } }.
 export const DETECTED_KEY = "ai-usage.detected";
@@ -16,18 +17,15 @@ const CODEX_PLANS = { plus: "ChatGPT Plus", pro: "ChatGPT Pro", team: "ChatGPT B
   enterprise: "ChatGPT Enterprise", edu: "ChatGPT Edu", free: "ChatGPT Free" };
 const stop = (_e, cx) => cx.stop_propagation();
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-// The full name of a limit, as Claude Code's band says it.
-const LIMIT_NAMES = { "5h": "5-hour limit", Week: "Weekly limit", Day: "Daily limit" };
 // The header's four forms: usage and tasks on one row; the usage row in full words over the tasks row; in
 // full words over two rows with the tasks moved up beside the title; or in short labels over two rows, the
 // tasks beside the title too. Which one fits is measured from the row's text (about CHAR px a character at
 // the header's size) and its bars, against the pane's width.
-const CHAR = 5.6, BAR = 60, PART = 16, PAD = 24;
+const BAR = 60, PART = 16, PAD = 24;
 // Folded, every header shows its title row alone. Herdr gives all pane headers of a layout one height, so
 // folding is for all panes, and each header says in NEED_KEY the height its form needs.
 export const FOLD_KEY = "ai-usage.header.folded";
 const NEED_KEY = "ai-usage.header.need";
-const HEIGHTS = { folded: 26, one: 44, two: 64 };
 let asked = { px: 0, at: 0 };
 const hhmm = (d) => d.toTimeString().slice(0, 5);
 const kTok = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : `${Math.round(n / 1000)}k`);
@@ -161,15 +159,22 @@ export class AgentHeader {
     if (!f) return "wide";
     const text = this.usageWords(f, true).join(" ");
     const need = text.length * CHAR + (f.limits.length + 1) * BAR + (f.limits.length + 3) * PART + PAD;
-    // Over two rows the longest half must fit: a little more than half of the whole.
     // One row is measured from the words as shown, and kept until the pane is 40 px narrower, so a changing
     // number never flips the header back and forth.
     const shown = this.usageWords(f, false).join(" ").length * CHAR + (f.limits.length + 1) * BAR + (f.limits.length + 3) * PART + PAD;
     const tasks = (f.tasks?.total ? `Tasks ${f.tasks.done}/${f.tasks.total} ` : "") + (f.subagents.length ? `· ${f.subagents.length} subagents done ` : "");
     const inline = shown + PART + (tasks ? (tasks.length + 2) * CHAR + BAR + 2 * PART : 34 * CHAR);
     this.inline = w >= inline - (this.inline ? 40 : 0);
-    return this.inline ? "inline" : w >= need ? "wide" : w >= need * 0.58 ? "medium" : "narrow";
+    if (this.inline) return "inline";
+    if (w >= need) return "wide";
+    return this.rows(f, true) <= 2 ? "medium" : "narrow";
   }
+
+  // How many rows the usage row wraps onto in this pane, in full words (`wide`) or short labels.
+  rows(f, wide) {
+    return usageRows(f, this.width ?? 4000, wide);
+  }
+
 
   // The usage row's words in full, for measuring: at their widest, or (`widest` false) as they read now.
   usageWords(f, widest = true) {
@@ -230,8 +235,9 @@ export class AgentHeader {
     parts.push(h_flex().gap(4).items_center().child(label("Cost"))
       .child(div().flex_none().text_color(t.foreground).child(f.cost === null ? "–" : `${f.exact ? "" : "~"}${this.h.money(f.cost)}`))
       .when(wide && f.cost !== null, (el) => el.child(dim("at API price"))));
-    // Two rows at most when wrapping; a separator never starts a row, so each part carries its own.
-    const row = wrap ? h_flex().flex_wrap().h(35).gap_x(8).gap_y(1).items_center().overflow_hidden()
+    // Wrapped onto as many rows as the pane needs; a separator never starts a row, so each part carries its own.
+    const rows = wrap ? this.rows(f, wide) : 1;
+    const row = wrap ? h_flex().flex_wrap().h(rows * 17 + (rows - 1)).gap_x(8).gap_y(1).items_center().overflow_hidden()
       : h_flex().h(17).gap(8).items_center().overflow_hidden();
     parts.forEach((part, i) => row.child(i ? h_flex().gap(8).items_center().child(sep()).child(part) : part));
     return row;
@@ -298,7 +304,7 @@ export class AgentHeader {
       .on_size_change((size, cx) => { if (Math.abs((this.width ?? 0) - size.width) > 16) { this.width = size.width; cx.notify(); } })
       .on_click(() => run("pane.focus", { pane: p.pane }));
     const f = kind && kind !== "other" ? this.facts(kind) : null, form = this.form(f), folded = Boolean(shared(FOLD_KEY));
-    this.fit(p, folded ? "folded" : f && form !== "inline" ? "two" : "one");
+    this.fit(p, folded ? HEIGHTS.folded : !f || form === "inline" ? HEIGHTS.one : form === "wide" ? HEIGHTS.two : heightFor(this.rows(f, form === "medium")));
     root.child(this.titleRow(p, t, kind, f && (folded || form === "medium" || form === "narrow") ? this.tasksBadge(f, t) : null));
     if (folded) return root;
     if (!kind) return root.child(div().h(18).text_size(11).text_color(t.muted).truncate().child(p.cwd ? folder(p.cwd) : ""));
@@ -313,20 +319,20 @@ export class AgentHeader {
     return root.child(this.usageRow(f, t)).child(this.tasksRow(f, p, t));
   }
 
-  // Says what height this pane's header needs; the first pane of the shown tab sets the layout's header
+  // Says what height (px) this pane's header needs; the first pane of the shown tab sets the layout's header
   // height to the tallest need of its tab (or the folded height), so no header clips and none is empty.
-  fit(p, size) {
+  fit(p, px) {
     const all = panes(), need = {};
-    for (const [id, px] of Object.entries(shared(NEED_KEY) ?? {})) if (all.some((q) => q.pane === id)) need[id] = px;
-    if (shared(NEED_KEY)?.[p.pane] !== HEIGHTS[size] || Object.keys(need).length !== Object.keys(shared(NEED_KEY) ?? {}).length) {
-      need[p.pane] = HEIGHTS[size];
+    for (const [id, h] of Object.entries(shared(NEED_KEY) ?? {})) if (all.some((q) => q.pane === id)) need[id] = h;
+    if (shared(NEED_KEY)?.[p.pane] !== px || Object.keys(need).length !== Object.keys(shared(NEED_KEY) ?? {}).length) {
+      need[p.pane] = px;
       setShared(NEED_KEY, need);
     }
-    need[p.pane] = HEIGHTS[size];
+    need[p.pane] = px;
     const tab = focused()?.tab ?? p.tab, shown = all.filter((q) => q.tab === tab);
     if (shown[0]?.pane !== p.pane) return;
-    const px = shared(FOLD_KEY) ? HEIGHTS.folded : Math.max(...shown.map((q) => need[q.pane] ?? HEIGHTS.two));
-    if (asked.px === px && Date.now() - asked.at < 3000) return;
+    const height = shared(FOLD_KEY) ? HEIGHTS.folded : Math.max(...shown.map((q) => need[q.pane] ?? HEIGHTS.two));
+    if (asked.px === height && Date.now() - asked.at < 3000) return;
     const l = layout();
     if (!l || typeof l !== "object") return;
     const tree = JSON.parse(JSON.stringify(l));
@@ -334,12 +340,12 @@ export class AgentHeader {
     const visit = (n) => {
       if (!n || typeof n !== "object") return;
       const header = n.content?.pane?.header;
-      if (header?.content?.mod === this.h.MOD && header.height !== px) { header.height = px; changed = true; }
+      if (header?.content?.mod === this.h.MOD && header.height !== height) { header.height = height; changed = true; }
       for (const c of n.children ?? []) visit(c);
     };
     visit(tree);
     if (!changed) return;
-    asked = { px, at: Date.now() };
+    asked = { px: height, at: Date.now() };
     run("layout.set", { layout: tree });
   }
 

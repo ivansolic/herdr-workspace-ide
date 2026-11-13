@@ -54,7 +54,7 @@ Every pane where Herdr recognizes an agent gets a header that tracks it. You don
 Plan ChatGPT Plus │ 5-hour limit ▬▬ 31% · resets 18:40 │ Weekly limit ▬ 9% │ Memory ▬ 20% │ Cost ~$1.20 │ ⠹ Tasks ▬▬▬ 1/3 · now: Add rate limiter  All tasks ›
 ```
 
-In a wide pane it all fits on one row; as the pane narrows it wraps onto two rows, then shortens the labels.
+In a wide pane it all fits on one row. As the pane narrows it wraps onto two rows, then shortens the labels and takes as many rows as it needs, so nothing is cut off.
 
 - **Claude Code, Codex and Gemini CLI:** their task lists (TaskCreate, `update_plan`, `write_todos`), memory, cost and plan, read live from their own session logs.
 - **Plans and limits are detected:**
