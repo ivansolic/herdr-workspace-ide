@@ -321,11 +321,40 @@ const HELP =
   '/tracker budget month 200      monthly API budget in $\n' +
   '/tracker plan 25 | auto         your subscription price per month in $ (auto: from your plan)'
 
+// /studio install: the Herdr side of this package (the workspace-studio layout, its vsc and ai-usage mods
+// and keys), fetched from GitHub and put in place by its install.sh, which keeps what it replaces.
+const STUDIO_REPO = 'https://github.com/ivansolic/herdr-workspace-studio'
+const STUDIO_HELP =
+  '/studio install               install Herdr Workspace Studio into the Herdr app and switch to its layout\n' +
+  '/studio install --no-switch   install it, keep your current layout\n' +
+  '/studio update                the same as install: fetch the latest and put it in place\n' +
+  `Fetches ${STUDIO_REPO} (main) and runs its install.sh. What it replaces goes to ~/.config/herdr-app/backups/.`
+
+// Fetches the repository into a new temporary folder, runs its install.sh, removes the folder; the text
+// is what to tell the person.
+async function installStudio($: EngineInterface, switchLayout: boolean): Promise<string> {
+  const found = await $.process.run(['/bin/sh', '-c', 'command -v herdr-app'])
+  if (found.exitCode !== 0) return 'Herdr is not installed (no herdr-app command). Install it from https://herdr.dev first.'
+  const tmp = await $.process.run(['mktemp', '-d'])
+  const dir = tmp.stdout.trim()
+  if (tmp.exitCode !== 0 || !dir) return `Could not make a temporary folder: ${tmp.stderr.trim()}`
+  try {
+    const clone = await $.process.run(['git', 'clone', '--quiet', '--depth', '1', STUDIO_REPO, `${dir}/studio`], { timeoutMs: 120_000 })
+    if (clone.exitCode !== 0) return `Could not fetch ${STUDIO_REPO}: ${clone.stderr.trim()}`
+    const run = await $.process.run(['bash', `${dir}/studio/install.sh`, ...(switchLayout ? [] : ['--no-switch'])], { timeoutMs: 300_000 })
+    const out = `${run.stdout}${run.stderr}`.trim().split('\n').slice(-14).join('\n')
+    return run.exitCode === 0 ? `Herdr Workspace Studio installed.\n${out}` : `install.sh failed (exit ${run.exitCode}):\n${out}`
+  } finally {
+    await $.process.run(['rm', '-rf', dir])
+  }
+}
+
 export const register: Register = on => {
   // Set when something worth exporting changed since the last snapshot.
   let dirty = false
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'tracker', description: 'Progress & usage tracker: history, mode, budget, plan, help' })
+    await $.command.register({ name: 'studio', description: 'Herdr Workspace Studio: install or update the Herdr layout and mods' })
     await $.tool.register({
       name: 'progress',
       description:
@@ -426,6 +455,12 @@ export const register: Register = on => {
     if (sub === 'help') return { text: HELP }
     const hidden = await update($, isHidden, v => !v)
     return { text: hidden ? 'Tracker hidden.' : 'Tracker shown.' }
+  })
+
+  on('command.run', { command: 'studio' }, async ($, e) => {
+    const [sub, flag] = e.args.trim().split(/\s+/)
+    if (sub === 'install' || sub === 'update') return { text: await installStudio($, flag !== '--no-switch') }
+    return { text: STUDIO_HELP }
   })
 
   on('prompt.change', async ($, e, next) => {
