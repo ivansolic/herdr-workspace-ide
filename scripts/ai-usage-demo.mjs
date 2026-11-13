@@ -122,6 +122,25 @@ const snapshot = {
   lists: [],
 };
 
+// The agent tracker in a pane's header: a pane whose folder ends in /acme-shop shows this Claude Code session.
+// --hover shows the header's buttons, --fold folds every header to its title row, --detail opens its task window.
+const agent = {
+  folder: "acme-shop", title: "Claude Code", status: "working", branch: "feature/checkout-redesign",
+  hovered: flag("hover"), folded: flag("fold"), detail: flag("detail"),
+  facts: {
+    plan: "Max 5x", project: "acme-shop", branch: "feature/checkout-redesign", model: "claude-opus-5-5", exact: true,
+    cost: snapshot.usage.usd,
+    limits: snapshot.usage.limits.map((l) => ({ label: l.kind === "five_hour" ? "5h" : "Week", percent: l.percentUsed, resetsAt: Date.parse(l.resetsAt) })),
+    context: { percent: snapshot.usage.contextPercent, tokens: snapshot.usage.contextTokens, window: snapshot.usage.contextWindow },
+    tasks: {
+      items: [["Read the checkout components", "completed"], ["Redesign the payment form", "completed"], ["Writing checkout tests", "in_progress"],
+        ["Run the accessibility check", "pending"], ["Update the changelog", "pending"]].map(([text, status]) => ({ text, status })),
+      done: 2, total: 5, active: "Writing checkout tests",
+    },
+    subagents: snapshot.agents.map(({ description, type, model, status, steps, tools, startedAt, endedAt }) => ({ description, type, model, status, steps, tools, startedAt, endedAt })),
+  },
+};
+
 const project = value("project") ?? null;
 const open = value("open");
 const demo = {
@@ -132,6 +151,7 @@ const demo = {
     limits: {}, sessions,
   },
   snapshots: [snapshot],
+  agent,
   shared: {
     "ai-usage.budgets": { "acme-shop": 250 }, "ai-usage.plans": { google: "ai-pro" }, "ai-usage.links": {}, "ai-usage.folded": [],
     "ai-usage.currency": value("currency") === "EUR" ? "EUR" : "USD",
