@@ -5,7 +5,7 @@
 // Panes without an agent get Herdr's usual header: icon, name, folder, status, split / zoom / close.
 import { div, svg, image } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { panes, exec, hc, home, appHome, theme, run, shared, setShared, props, openOverlay, closeOverlay } from "herdr";
+import { panes, focused, layout, exec, hc, home, appHome, theme, run, shared, setShared, props, openOverlay, closeOverlay } from "herdr";
 import { geminiScreen } from "./lib/live.js";
 import { modelName } from "./lib/usage.js";
 
@@ -18,10 +18,17 @@ const stop = (_e, cx) => cx.stop_propagation();
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 // The full name of a limit, as Claude Code's band says it.
 const LIMIT_NAMES = { "5h": "5-hour limit", Week: "Weekly limit", Day: "Daily limit" };
-// The header's three forms: the usage row in full words on one row; in full words over two rows with the
-// tasks moved up beside the title; or in short labels over two rows, the tasks beside the title too. Which one fits is measured from the
-// row's text (about CHAR px a character at the header's size) and its bars, against the pane's width.
+// The header's four forms: usage and tasks on one row; the usage row in full words over the tasks row; in
+// full words over two rows with the tasks moved up beside the title; or in short labels over two rows, the
+// tasks beside the title too. Which one fits is measured from the row's text (about CHAR px a character at
+// the header's size) and its bars, against the pane's width.
 const CHAR = 5.6, BAR = 60, PART = 16, PAD = 24;
+// Folded, every header shows its title row alone. Herdr gives all pane headers of a layout one height, so
+// folding is for all panes, and each header says in NEED_KEY the height its form needs.
+export const FOLD_KEY = "ai-usage.header.folded";
+const NEED_KEY = "ai-usage.header.need";
+const HEIGHTS = { folded: 26, one: 44, two: 64 };
+let asked = { px: 0, at: 0 };
 const hhmm = (d) => d.toTimeString().slice(0, 5);
 const kTok = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : `${Math.round(n / 1000)}k`);
 
@@ -155,15 +162,21 @@ export class AgentHeader {
     const text = this.usageWords(f, true).join(" ");
     const need = text.length * CHAR + (f.limits.length + 1) * BAR + (f.limits.length + 3) * PART + PAD;
     // Over two rows the longest half must fit: a little more than half of the whole.
-    return w >= need ? "wide" : w >= need * 0.58 ? "medium" : "narrow";
+    // One row is measured from the words as shown, and kept until the pane is 40 px narrower, so a changing
+    // number never flips the header back and forth.
+    const shown = this.usageWords(f, false).join(" ").length * CHAR + (f.limits.length + 1) * BAR + (f.limits.length + 3) * PART + PAD;
+    const tasks = (f.tasks?.total ? `Tasks ${f.tasks.done}/${f.tasks.total} ` : "") + (f.subagents.length ? `· ${f.subagents.length} subagents done ` : "");
+    const inline = shown + PART + (tasks ? (tasks.length + 2) * CHAR + BAR + 2 * PART : 34 * CHAR);
+    this.inline = w >= inline - (this.inline ? 40 : 0);
+    return this.inline ? "inline" : w >= need ? "wide" : w >= need * 0.58 ? "medium" : "narrow";
   }
 
-  // The usage row's words in full, for measuring.
-  usageWords(f) {
+  // The usage row's words in full, for measuring: at their widest, or (`widest` false) as they read now.
+  usageWords(f, widest = true) {
     const words = [`Plan ${f.plan ?? "–"}`];
-    for (const l of f.limits) words.push(`${LIMIT_NAMES[l.label] ?? l.label} 100% · resets Tue 03:00`);
-    if (f.context) words.push("Memory 100% · 827k of 1.0M tokens");
-    words.push("Cost $000.00 at API price");
+    for (const l of f.limits) words.push(`${LIMIT_NAMES[l.label] ?? l.label} ${widest ? 100 : Math.round(l.percent)}% · resets ${widest || l.resetsAt - Date.now() >= 24 * 3600e3 ? "Tue 03:00" : "03:00"}`);
+    if (f.context) words.push(`Memory ${widest ? 100 : f.context.percent}% · 827k of 1.0M tokens`);
+    words.push(widest ? "Cost $000.00 at API price" : `Cost ${f.cost === null ? "–" : this.h.money(f.cost)} at API price`);
     return words;
   }
 
@@ -184,6 +197,8 @@ export class AgentHeader {
         .text_size(10.5).font_semibold().text_color(t.blocked).child("Needs you")))
       .when(p.status === "done", (el) => el.child(div().size(7).flex_none().rounded(4).bg(t.done)))
       .when(this.hovered, (el) => el
+        .child(this.button(t, `ah-f-${pane}`, svg(`mods/${this.h.MOD}/icons/${shared(FOLD_KEY) ? "unfold" : "fold"}.svg`).size(14),
+          () => setShared(FOLD_KEY, !shared(FOLD_KEY)), shared(FOLD_KEY) ? "Show usage and tasks in every pane" : "Fold every pane's header to one row"))
         .child(this.button(t, `ah-r-${pane}`, svg("mods/pane/split-right.svg").size(14), () => run("pane.split", { direction: "right", pane }), "Split right"))
         .child(this.button(t, `ah-d-${pane}`, svg("mods/pane/split-down.svg").size(14), () => run("pane.split", { direction: "down", pane }), "Split down"))
         .child(this.button(t, `ah-z-${pane}`, svg(`mods/pane/${p.zoomed ? "unzoom" : "zoom"}.svg`).size(14), () => run("pane.zoom", { pane }), "Zoom"))
@@ -254,8 +269,9 @@ export class AgentHeader {
     const tasks = f.tasks ?? { done: 0, total: 0 };
     const running = f.subagents.filter((a) => a.status === "running").length, done = f.subagents.length - running;
     const busy = p.status === "working";
+    const mark = busy ? SPINNER[0] : tasks.total && tasks.done === tasks.total ? "✓" : null;
     const row = h_flex().h(17).gap(6).items_center().overflow_hidden()
-      .child(div().w(12).flex_none().text_color(busy ? t.working : t.accent).when(busy, (el) => el.frames(SPINNER, 90)).child(busy ? SPINNER[0] : tasks.total && tasks.done === tasks.total ? "✓" : "·"));
+      .when(Boolean(mark), (el) => el.child(div().w(12).flex_none().text_color(busy ? t.working : t.accent).when(busy, (el) => el.frames(SPINNER, 90)).child(mark)));
     if (tasks.total) {
       row.child(div().flex_none().font_semibold().text_color(t.ansi3).child("Tasks"))
         .child(this.bar((tasks.done / tasks.total) * 100, t, 56, tasks.done === tasks.total ? t.done : t.accent))
@@ -276,17 +292,55 @@ export class AgentHeader {
     const t = theme(), p = this.me();
     if (!p) return div();
     const kind = agentKind(p);
-    // 64 px in the layout: an 18 px title row and two 17 px rows, with 3 px around and 1 px between.
+    // 64 px for an 18 px title row and two 17 px rows, with 3 px around and 1 px between; 44 px for one row, 26 folded.
     const root = v_flex().id(`agent-head-${p.pane}`).size_full().px(10).py(3).gap(1).justify_center().bg(t.background).border_b(1).border_color(t.border)
       .text_size(12).on_hover((hovered, cx) => { this.hovered = hovered; cx.notify(); })
       .on_size_change((size, cx) => { if (Math.abs((this.width ?? 0) - size.width) > 16) { this.width = size.width; cx.notify(); } })
       .on_click(() => run("pane.focus", { pane: p.pane }));
-    const f = kind && kind !== "other" ? this.facts(kind) : null, form = this.form(f);
-    root.child(this.titleRow(p, t, kind, f && form !== "wide" ? this.tasksBadge(f, t) : null));
+    const f = kind && kind !== "other" ? this.facts(kind) : null, form = this.form(f), folded = Boolean(shared(FOLD_KEY));
+    this.fit(p, folded ? "folded" : f && form !== "inline" ? "two" : "one");
+    root.child(this.titleRow(p, t, kind, f && (folded || form === "medium" || form === "narrow") ? this.tasksBadge(f, t) : null));
+    if (folded) return root;
     if (!kind) return root.child(div().h(18).text_size(11).text_color(t.muted).truncate().child(p.cwd ? folder(p.cwd) : ""));
     if (kind === "other") return root.child(div().h(18).text_size(11).text_color(t.muted).child("Agent · its usage isn't read yet (Claude Code, Codex and Gemini CLI are)"));
+    if (form === "inline") {
+      return root.child(h_flex().h(17).gap(8).items_center().overflow_hidden()
+        .child(this.usageRow(f, t, true, false).flex_none())
+        .child(div().flex_none().text_color(t.border).child("│"))
+        .child(this.tasksRow(f, p, t).flex_1().min_w(0)));
+    }
     if (form !== "wide") return root.child(this.usageRow(f, t));
     return root.child(this.usageRow(f, t)).child(this.tasksRow(f, p, t));
+  }
+
+  // Says what height this pane's header needs; the first pane of the shown tab sets the layout's header
+  // height to the tallest need of its tab (or the folded height), so no header clips and none is empty.
+  fit(p, size) {
+    const all = panes(), need = {};
+    for (const [id, px] of Object.entries(shared(NEED_KEY) ?? {})) if (all.some((q) => q.pane === id)) need[id] = px;
+    if (shared(NEED_KEY)?.[p.pane] !== HEIGHTS[size] || Object.keys(need).length !== Object.keys(shared(NEED_KEY) ?? {}).length) {
+      need[p.pane] = HEIGHTS[size];
+      setShared(NEED_KEY, need);
+    }
+    need[p.pane] = HEIGHTS[size];
+    const tab = focused()?.tab ?? p.tab, shown = all.filter((q) => q.tab === tab);
+    if (shown[0]?.pane !== p.pane) return;
+    const px = shared(FOLD_KEY) ? HEIGHTS.folded : Math.max(...shown.map((q) => need[q.pane] ?? HEIGHTS.two));
+    if (asked.px === px && Date.now() - asked.at < 3000) return;
+    const l = layout();
+    if (!l || typeof l !== "object") return;
+    const tree = JSON.parse(JSON.stringify(l));
+    let changed = false;
+    const visit = (n) => {
+      if (!n || typeof n !== "object") return;
+      const header = n.content?.pane?.header;
+      if (header?.content?.mod === this.h.MOD && header.height !== px) { header.height = px; changed = true; }
+      for (const c of n.children ?? []) visit(c);
+    };
+    visit(tree);
+    if (!changed) return;
+    asked = { px, at: Date.now() };
+    run("layout.set", { layout: tree });
   }
 
   // The detail window: every task, every subagent, limits, context and cost of this pane's agent.

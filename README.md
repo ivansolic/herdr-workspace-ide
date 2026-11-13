@@ -50,17 +50,19 @@ Everything comes from each agent's own logs on your computer. Usage figures only
 Every pane where Herdr recognizes an agent gets a header that tracks it. You don't set anything up:
 
 ```
-◆ Codex · api-gateway · main                                                      ⤢
-Plan ChatGPT Plus │ 5h ▬▬ 31% ↻18:40 │ Week ▬ 9% │ Mem ▬ 20% │ Cost ~$1.20
-⠹ Tasks ▬▬▬ 1/3 · now: Add rate limiter
+◆ Codex · api-gateway · main
+Plan ChatGPT Plus │ 5-hour limit ▬▬ 31% · resets 18:40 │ Weekly limit ▬ 9% │ Memory ▬ 20% │ Cost ~$1.20 │ ⠹ Tasks ▬▬▬ 1/3 · now: Add rate limiter  All tasks ›
 ```
+
+In a wide pane it all fits on one row; as the pane narrows it wraps onto two rows, then shortens the labels.
 
 - **Claude Code, Codex and Gemini CLI:** their task lists (TaskCreate, `update_plan`, `write_todos`), memory, cost and plan, read live from their own session logs.
 - **Plans and limits are detected:**
   - **Claude:** from its login.
   - **Codex:** the plan field of its login, and its 5-hour and weekly limits from its logs.
   - **Gemini:** run `/stats` in a Gemini pane and its plan and daily limit appear.
-- **Click ⤢** to open a window with every task and subagent.
+- **All tasks ›** opens a window with every task and subagent.
+- **Fold** (the arrows with the buttons at the top right) shrinks every header to its title row and tasks, and unfold brings the rest back. Herdr gives all pane headers one height, so folding applies to every pane, and the height follows what the panes in the tab need.
 - **Other agents** keep Herdr's usual header for now, and plain shells keep it too.
 
 ## Claude Code progress tracker

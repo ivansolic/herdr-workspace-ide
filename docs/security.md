@@ -104,7 +104,10 @@ Herdr asks every shared mod to say this before it is installed. Back to the [REA
 - **Writes under `~/.config/herdr-app`:** `data/ai-usage/cache.json`, the usage figures of each log file
   it has read (so it reads only what changed, and keeps daily totals of logs an agent deletes for up to
   400 days); in `shared.json`: `ai-usage.plans`, `ai-usage.budgets`, `ai-usage.budget-warned`,
-  `ai-usage.links`, `ai-usage.folded`, `ai-usage.currency`, `ai-usage.ecb` and `ai-usage.detected`.
+  `ai-usage.links`, `ai-usage.folded`, `ai-usage.currency`, `ai-usage.ecb`, `ai-usage.detected`,
+  `ai-usage.header.folded` and `ai-usage.header.need` (the header height each pane needs). The pane
+  header sets the shown layout's header height through `layout.set`, which Herdr saves to that layout's
+  file under `layouts/`; only the `height` of headers drawn by this mod changes.
   `data/ai-usage/demo.json` exists only while demo mode is on (`scripts/ai-usage-demo.mjs`).
 - **Writes your files** only when you click Export CSV: `~/Downloads/ai-usage-<name>-<period>-<date>.csv`,
   then `open -R` shows it in Finder.
