@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { usageRows, heightFor, HEIGHTS } from "../mods/ai-usage/lib/fit.js";
+import { usageParts, usageRows, heightFor, HEIGHTS } from "../mods/ai-usage/lib/fit.js";
 
 const now = Date.parse("2026-11-13T08:00:00Z");
 const facts = {
@@ -21,4 +21,13 @@ test("wide panes keep one or two rows", () => {
   assert.equal(usageRows(facts, 800, true, now), 2);
   assert.equal(heightFor(1), HEIGHTS.one);
   assert.equal(heightFor(2), HEIGHTS.two);
+});
+
+test("a tiny pane puts each part on its own row, and every row fits in the header", () => {
+  const rows = usageRows(facts, 170, false, now);
+  assert.equal(rows, 5);
+  // A title row of 18 px and 3 px around, then each wrapped row as drawn (about 19 px).
+  assert.ok(heightFor(rows) >= 3 + 18 + rows * 19, `${heightFor(rows)} px for ${rows} rows`);
+  // With its separator, each part fits across the pane (less its 10 px sides).
+  for (const [i, size] of usageParts(facts, 170, false, now).entries()) assert.ok(size + (i ? 14 : 0) <= 150, `part ${i}: ${Math.round(size)} px`);
 });

@@ -8,7 +8,7 @@ import { v_flex, h_flex } from "gpui-base";
 import { panes, focused, layout, exec, hc, home, appHome, theme, run, shared, setShared, props, openOverlay, closeOverlay } from "herdr";
 import { geminiScreen } from "./lib/live.js";
 import { modelName } from "./lib/usage.js";
-import { CHAR, LIMIT_NAMES, HEIGHTS, heightFor, usageRows } from "./lib/fit.js";
+import { CHAR, LIMIT_NAMES, HEIGHTS, TINY, barWidth, heightFor, usageRows } from "./lib/fit.js";
 
 // Plans the logs or screens report, for the AI usage panel too: { openai: { plan, at }, google: { plan, limit, at } }.
 export const DETECTED_KEY = "ai-usage.detected";
@@ -194,7 +194,7 @@ export class AgentHeader {
     const pane = p.pane;
     return h_flex().h(18).gap(8).items_center()
       .when(Boolean(pic), (el) => el.child(pic))
-      .child(div().flex_none().truncate().max_w(220).font_semibold().text_color(t.foreground).child(name))
+      .child(div().flex_shrink(1).min_w(30).truncate().max_w(220).font_semibold().text_color(t.foreground).child(name))
       .child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(where))
       .when(Boolean(extra), (el) => el.child(extra))
       .when(p.status === "working", (el) => el.child(svg("mods/workspace-chrome/spinner.svg").size(12).flex_none().text_color(t.working).spin(900)))
@@ -217,17 +217,17 @@ export class AgentHeader {
     const dim = (text) => div().flex_none().text_color(t.muted).child(text);
     const sep = () => div().flex_none().text_color(t.border).child("│");
     const parts = [h_flex().gap(4).items_center().child(label("Plan")).child(div().truncate().text_color(t.accent).child(f.plan ?? "–"))];
-    const now = Date.now();
+    const now = Date.now(), w = this.width ?? 4000, tiny = wrap && w < TINY, bw = wrap ? barWidth(w, wide) : wide ? 56 : 40;
     for (const l of f.limits) {
       const at = l.resetsAt ? new Date(l.resetsAt) : null;
       const reset = at ? (l.resetsAt - now < 24 * 3600e3 ? hhmm(at) : `${WEEKDAYS[at.getDay()]} ${hhmm(at)}`) : l.resetsIn ? `in ${l.resetsIn}` : "";
-      parts.push(h_flex().gap(4).items_center().child(label(wide ? LIMIT_NAMES[l.label] ?? l.label : l.label)).child(this.bar(l.percent, t, wide ? 56 : 40))
+      parts.push(h_flex().gap(4).items_center().child(label(wide ? LIMIT_NAMES[l.label] ?? l.label : l.label)).child(this.bar(l.percent, t, bw))
         .child(div().flex_none().text_color(t.foreground).child(`${Math.round(l.percent)}%`))
-        .when(Boolean(reset), (el) => el.child(dim(wide ? `· resets ${reset}` : `↻${reset}`))));
+        .when(Boolean(reset) && !tiny, (el) => el.child(dim(wide ? `· resets ${reset}` : `↻${reset}`))));
     }
     if (f.context?.percent !== undefined && f.context?.percent !== null) {
       const of = f.context.tokens && f.context.window ? `· ${kTok(f.context.tokens)} of ${kTok(f.context.window)} tokens` : "";
-      parts.push(h_flex().gap(4).items_center().child(label(wide ? "Memory" : "Mem")).child(this.bar(f.context.percent, t, wide ? 56 : 40))
+      parts.push(h_flex().gap(4).items_center().child(label(wide ? "Memory" : "Mem")).child(this.bar(f.context.percent, t, bw))
         .child(div().flex_none().text_color(t.foreground).child(`${f.context.percent}%`))
         .when(wide && Boolean(of), (el) => el.child(dim(of))));
     }
@@ -236,8 +236,7 @@ export class AgentHeader {
       .child(div().flex_none().text_color(t.foreground).child(f.cost === null ? "–" : `${f.exact ? "" : "~"}${this.h.money(f.cost)}`))
       .when(wide && f.cost !== null, (el) => el.child(dim("at API price"))));
     // Wrapped onto as many rows as the pane needs; a separator never starts a row, so each part carries its own.
-    const rows = wrap ? this.rows(f, wide) : 1;
-    const row = wrap ? h_flex().flex_wrap().h(rows * 17 + (rows - 1)).gap_x(8).gap_y(1).items_center().overflow_hidden()
+    const row = wrap ? h_flex().flex_wrap().gap_x(8).gap_y(1).items_center()
       : h_flex().h(17).gap(8).items_center().overflow_hidden();
     parts.forEach((part, i) => row.child(i ? h_flex().gap(8).items_center().child(sep()).child(part) : part));
     return row;
@@ -261,7 +260,8 @@ export class AgentHeader {
   // opens every task and subagent.
   tasksBadge(f, t) {
     const tasks = f.tasks ?? { done: 0, total: 0 };
-    const label = tasks.total ? [
+    // In a tiny pane the count alone, so the agent's name keeps some room.
+    const label = tasks.total && (this.width ?? 4000) < TINY ? [div().text_color(t.foreground).child(`Tasks ${tasks.done}/${tasks.total}`)] : tasks.total ? [
       div().font_semibold().text_color(t.ansi3).child("Tasks"),
       this.bar((tasks.done / tasks.total) * 100, t, 40, tasks.done === tasks.total ? t.done : t.accent),
       div().text_color(t.foreground).child(`${tasks.done}/${tasks.total}`),
