@@ -9,7 +9,7 @@ It works in the style of VS Code but isn't affiliated with Microsoft or Visual S
 | --- | --- |
 | **Workspace layout** | Explorer, Source Control, Search, Problems and editor tabs next to your terminals |
 | **AI usage panel** | Subscriptions and limits, cost by day, project, feature and model, for Claude Code, Gemini CLI and Codex |
-| **Agent tracker** | Every pane with an agent shows its plan, limits, memory, cost and task list, for any agent |
+| **Agent tracker** | Each pane running Claude Code, Codex or Gemini CLI shows its plan, limits, memory, cost and tasks, and fits itself to the pane |
 | **Claude Code progress tracker** | Tasks and subagents with progress bars inside Claude Code, above its prompt |
 
 Runs on macOS and Linux and needs Herdr 0.1.14 or newer. The AI usage panel also needs Node 20+.
@@ -47,23 +47,48 @@ Everything comes from each agent's own logs on your computer. Usage figures only
 
 ## Agent tracker
 
-Every pane where Herdr recognizes an agent gets a header that tracks it. You don't set anything up:
+Every pane where Herdr recognizes an agent gets a header that tracks it. You don't set anything up.
 
-```
-◆ Codex · api-gateway · main
-Plan ChatGPT Plus │ 5-hour limit ▬▬ 31% · resets 18:40 │ Weekly limit ▬ 9% │ Memory ▬ 20% │ Cost ~$1.20 │ ⠹ Tasks ▬▬▬ 1/3 · now: Add rate limiter  All tasks ›
-```
+![A Claude Code pane: plan, limits, memory, cost and tasks on one row above the terminal](docs/images/pane-tracker.png)
 
-In a wide pane it all fits on one row. As the pane narrows it wraps onto two rows, then shortens the labels and takes as many rows as it needs, so nothing is cut off.
+**What it shows**, read live from the agent's own session logs:
 
-- **Claude Code, Codex and Gemini CLI:** their task lists (TaskCreate, `update_plan`, `write_todos`), memory, cost and plan, read live from their own session logs.
+| Part | What it tells you |
+| --- | --- |
+| **Title row** | The agent, its project and git branch, a spinner while it works, and "Needs you" when it waits for you |
+| **Plan** | The subscription the agent runs on |
+| **5-hour / Weekly / Daily limit** | How much of each limit is used, and when it resets |
+| **Memory** | How full the agent's context window is |
+| **Cost** | What the session would cost at API list price |
+| **Tasks** | Done of total, the task running now, and how many subagents run or are done |
+
+**What you can click:**
+
+| Click | What happens |
+| --- | --- |
+| **All tasks ›** (or the **Tasks** badge) | Opens a window with every task (open ones first, done ones struck through) and every subagent with its steps, tool calls and time |
+| **Fold** (double arrow, top right, on hover) | Folds every header to its title row and task count; click again to unfold |
+| **Split right / Split down / Zoom / Close** (top right, on hover) | The pane buttons Herdr's own header has |
+| **The header** | Focuses that pane |
+
+![The All tasks window: usage, the task list and four subagents with their progress](docs/images/pane-tracker-tasks.png)
+
+**It fits the pane.** In a wide pane everything sits on one row. As the pane narrows, the usage wraps onto two rows and the tasks move up beside the title. Narrower still, the labels get shorter (5h, Week, Mem) and the header takes as many rows as it needs, so nothing is cut off. Below about 260 px the reset times are hidden; they're still in the **All tasks** window.
+
+![The same agent in a wide pane (two rows) and in two narrow panes (three rows, short labels)](docs/images/pane-tracker-narrow.png)
+
+Folded, every header is one row:
+
+![Folded headers: the agent, its project and the task count](docs/images/pane-tracker-folded.png)
+
+Herdr gives all pane headers in a layout one height. The tracker sets it to what the tallest header in the tab needs, and changes it once the panes have stopped resizing, so dragging a divider doesn't keep resizing your terminals.
+
+- **Claude Code, Codex and Gemini CLI:** their task lists (TaskCreate, `update_plan`, `write_todos`), memory, cost and plan.
 - **Plans and limits are detected:**
   - **Claude:** from its login.
   - **Codex:** the plan field of its login, and its 5-hour and weekly limits from its logs.
   - **Gemini:** run `/stats` in a Gemini pane and its plan and daily limit appear.
-- **All tasks ›** opens a window with every task and subagent.
-- **Fold** (the arrows with the buttons at the top right) shrinks every header to its title row and tasks, and unfold brings the rest back. Herdr gives all pane headers one height, so folding applies to every pane, and the height follows what the panes in the tab need.
-- **Other agents** keep Herdr's usual header for now, and plain shells keep it too.
+- **Other agents** show that their usage isn't read yet, and plain shells keep a simple header with their folder.
 
 ## Claude Code progress tracker
 
@@ -78,6 +103,8 @@ Subagents  1 running · 1 done
 │ Memory ▰▰▰▰▱▱▱▱▱▱ 37% · 370k of 1.0M tokens │ Cost $18.40 at API price [ History ] │
 ╰─────────────────────────────────────────────────────────────────────────────────╯
 ```
+
+While you type a slash command (`/compact`) or a mention (`@src/…`), the band steps aside, so Claude Code's suggestions sit right above the prompt. It comes back once you pick one, send, or delete the text.
 
 The tracker writes a small snapshot per session, which the AI usage panel reads for live limits and subagents. Type `/tracker help` for its commands.
 
@@ -125,7 +152,9 @@ Nothing leaves your computer, apart from one download of the ECB's public euro r
 ./scripts/dev-link.sh                     # copy mods/ and layouts/ into ~/.config/herdr-app
 herdr-app check mods/vsc                  # check a mod after each change
 npm test                                  # tests (Node 20+)
-node scripts/ai-usage-demo.mjs            # AI usage with made-up data, for screenshots; --off to leave
+node scripts/ai-usage-demo.mjs            # made-up data for screenshots: the AI usage panel, and the agent
+                                          #   tracker in any pane whose folder ends in /acme-shop
+                                          #   (--hover, --fold, --detail); --off to leave
 claude plugin test claude-code/progress-tracker
 ```
 
